@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Loader2, CheckCircle2, AlertCircle, Terminal, X } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertCircle, X } from 'lucide-react';
 
 export default function JobProgressModal({ job, onClose }) {
   const terminalRef = useRef(null);
@@ -17,25 +17,25 @@ export default function JobProgressModal({ job, onClose }) {
   const isRunning = job.status === 'RUNNING' || job.status === 'PENDING';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-teal-950/70 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      <div className="bg-white border border-teal-850/30 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-        {/* Retro-futuristic Deep Teal Header */}
-        <div className="px-6 py-4 bg-teal-950 border-b border-teal-850 text-teal-100 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 font-mono select-none">
+      <div className="bg-white border-2 border-black w-full max-w-2xl shadow-brutal overflow-hidden flex flex-col max-h-[85vh]">
+        {/* Terminal Header */}
+        <div className="px-5 py-3.5 bg-black border-b border-black text-white flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            {isRunning && <Loader2 className="h-5 w-5 text-teal-300 animate-spin" />}
-            {isCompleted && <CheckCircle2 className="h-5 w-5 text-teal-300" />}
-            {isFailed && <AlertCircle className="h-5 w-5 text-rose-400" />}
+            {isRunning && <Loader2 className="h-4 w-4 text-acid animate-spin" />}
+            {isCompleted && <CheckCircle2 className="h-4 w-4 text-acid" />}
+            {isFailed && <AlertCircle className="h-4 w-4 text-red-500" />}
             <div>
-              <h3 className="font-bold text-teal-100 text-sm tracking-wide">
-                {job.job_type.replace('_', ' ')} Pipeline Telemetry
+              <h3 className="font-bold text-white text-xs uppercase tracking-wider">
+                {job.job_type.replace('_', ' ')} // TELEMETRY
               </h3>
-              <p className="text-[11px] text-teal-400 font-mono">TASK_ID: {job.id}</p>
+              <p className="text-[10px] text-neutral-400">TASK_ID: {job.id}</p>
             </div>
           </div>
           {(isCompleted || isFailed) && (
             <button
               onClick={onClose}
-              className="p-1.5 rounded-xl hover:bg-teal-900 text-teal-300 hover:text-white transition"
+              className="p-1 border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white transition"
             >
               <X className="h-4 w-4" />
             </button>
@@ -43,47 +43,61 @@ export default function JobProgressModal({ job, onClose }) {
         </div>
 
         {/* Progress Bar & Current Step */}
-        <div className="px-6 py-3.5 bg-teal-50 border-b border-teal-850/15 space-y-2">
+        <div className="px-5 py-3 bg-neutral-100 border-b border-black space-y-2">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold text-teal-950 font-mono">
+            <span className="font-bold text-black uppercase text-[11px]">
               {job.current_step || (isRunning ? 'Processing...' : job.status)}
             </span>
-            <span className="font-mono font-bold text-teal-800">{Math.round(job.progress || 0)}%</span>
+            <span className="font-bold text-black">{Math.round(job.progress || 0)}%</span>
           </div>
-          <div className="w-full bg-teal-200/60 h-2 rounded-full overflow-hidden p-0.5">
+          <div className="w-full bg-neutral-300 h-2 border border-black p-0">
             <div
-              className={`h-full rounded-full transition-all duration-300 ${
-                isFailed ? 'bg-rose-500' : 'bg-teal-700'
+              className={`h-full transition-all duration-300 ${
+                isFailed ? 'bg-red-600' : 'bg-black'
               }`}
               style={{ width: `${job.progress || 0}%` }}
             ></div>
           </div>
         </div>
 
-        {/* Console / Log Terminal */}
-        <div className="flex-1 p-4 bg-teal-950 text-teal-100 overflow-y-auto font-mono text-xs max-h-80" ref={terminalRef}>
-          <div className="flex items-center space-x-2 text-teal-400 text-[10px] pb-2 mb-2 border-b border-teal-900 uppercase tracking-widest">
-            <Terminal className="h-3 w-3" />
-            <span>Telemetry Standard Output Stream</span>
+        {/* Streaming Logs Viewport */}
+        <div className="p-4 bg-neutral-950 flex-1 overflow-hidden flex flex-col min-h-[220px]">
+          <div className="text-[10px] uppercase tracking-widest text-neutral-400 font-bold mb-2 pb-1 border-b border-neutral-800 flex items-center justify-between">
+            <span>CONSOLE_STDOUT</span>
+            <span className="text-acid">{isRunning ? 'STREAMING...' : 'HALTED'}</span>
           </div>
-          <pre className="whitespace-pre-wrap leading-relaxed text-teal-200/90 text-[11px]">
-            {job.logs || 'Connecting to daemon stream...\n'}
-          </pre>
+          <div
+            ref={terminalRef}
+            className="flex-1 overflow-y-auto font-mono text-[11px] text-neutral-300 space-y-1 pr-2"
+          >
+            {job.logs && job.logs.length > 0 ? (
+              job.logs.map((log, idx) => (
+                <div key={idx} className="leading-snug">
+                  <span className="text-neutral-600 mr-2 select-none">[{idx + 1}]</span>
+                  <span className={log.includes('ERROR') || log.includes('failed') ? 'text-red-400' : 'text-neutral-200'}>
+                    {log}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="text-neutral-600 italic">Awaiting worker thread handshake...</div>
+            )}
+          </div>
         </div>
 
-        {/* Modal Footer */}
-        <div className="px-6 py-3.5 bg-white border-t border-teal-850/15 flex justify-end">
-          <button
-            onClick={onClose}
-            disabled={isRunning}
-            className={`px-5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition ${
-              isRunning
-                ? 'bg-teal-100 text-teal-400 cursor-not-allowed'
-                : 'bg-teal-900 hover:bg-teal-850 text-teal-100 shadow-tactile'
-            }`}
-          >
-            {isRunning ? 'Pipeline Active' : 'Close Console'}
-          </button>
+        {/* Footer actions */}
+        <div className="px-5 py-3 bg-white border-t border-black flex items-center justify-between">
+          <span className="text-[10px] text-neutral-600 uppercase">
+            STATUS: <strong className="text-black">{job.status}</strong>
+          </span>
+          {(isCompleted || isFailed) && (
+            <button
+              onClick={onClose}
+              className="px-5 py-1.5 bg-black hover:bg-neutral-800 text-white font-mono text-xs font-bold uppercase tracking-wider border border-black shadow-brutal-sm"
+            >
+              Close Telemetry
+            </button>
+          )}
         </div>
       </div>
     </div>

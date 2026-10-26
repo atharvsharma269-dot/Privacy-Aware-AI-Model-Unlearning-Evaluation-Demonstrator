@@ -1,82 +1,69 @@
 import React from 'react';
-import {
-  Compass,
-  Layers,
-  PlayCircle,
-  UserX,
-  FlaskConical,
-  BarChart3,
-  History,
-  Lightbulb,
-  Trophy,
-  Terminal,
-  ShieldCheck,
-} from 'lucide-react';
 
 const NAV_ITEMS = [
-  { id: 'overview', num: '01', label: 'Overview', icon: Compass, badge: null },
-  { id: 'live-demo', num: 'F1', label: 'Live Unlearning Demo', icon: Trophy, badge: 'Live Lab' },
-  { id: 'dataset', num: '02', label: 'Dataset Explorer', icon: Layers, badge: null },
-  { id: 'training', num: '03', label: 'Model Training', icon: PlayCircle, badge: 'Stage A' },
-  { id: 'forgetting', num: '04', label: 'Forgetting Request', icon: UserX, badge: 'Stage B' },
-  { id: 'unlearning', num: '05', label: 'Unlearning Lab', icon: FlaskConical, badge: 'Stage C & D' },
-  { id: 'evaluation', num: '06', label: 'Evaluation Metrics', icon: BarChart3, badge: 'Stage E' },
-  { id: 'history', num: '07', label: 'Audit History', icon: History, badge: null },
-  { id: 'insights', num: '08', label: 'Research Insights', icon: Lightbulb, badge: 'Analysis' },
+  { id: 'overview', num: '01', slug: 'OVERVIEW', badge: null },
+  { id: 'live-demo', num: 'F1', slug: 'LIVE_DEMO', badge: 'LIVE' },
+  { id: 'dataset', num: '02', slug: 'DATASET_EXPLORER', badge: null },
+  { id: 'training', num: '03', slug: 'MODEL_TRAINING', badge: 'STAGE_A' },
+  { id: 'forgetting', num: '04', slug: 'FORGETTING_REQ', badge: 'STAGE_B' },
+  { id: 'unlearning', num: '05', slug: 'UNLEARNING_LAB', badge: 'STAGE_C+D' },
+  { id: 'evaluation', num: '06', slug: 'EVALUATION_METRICS', badge: 'STAGE_E' },
+  { id: 'history', num: '07', slug: 'AUDIT_LOG', badge: null },
+  { id: 'insights', num: '08', slug: 'RESEARCH_INSIGHTS', badge: 'ANALYSIS' },
 ];
 
 export default function Sidebar({ currentTab, onSelectTab, activeExperiment }) {
   return (
-    <aside className="w-64 bg-teal-950 border-r border-teal-850 flex flex-col justify-between shrink-0 select-none shadow-tactile z-20">
-      <div className="p-4 space-y-4">
-        {/* Terminal Title / System Identifier */}
-        <div className="px-3 pt-1 pb-2 border-b border-teal-850/80">
-          <div className="flex items-center space-x-2 text-teal-300">
-            <Terminal className="h-4 w-4 text-teal-300 shrink-0" />
-            <span className="font-mono text-xs font-bold tracking-wider uppercase">RESEARCH TERMINAL</span>
+    <aside className="w-64 bg-black text-neutral-300 border-r border-neutral-800 flex flex-col justify-between shrink-0 select-none z-20 font-mono text-xs">
+      <div>
+        {/* Terminal Header */}
+        <div className="p-4 border-b border-neutral-800 bg-neutral-950">
+          <div className="flex items-center justify-between text-neutral-400">
+            <span className="text-[11px] tracking-widest text-neutral-200 font-bold">
+              SYS.DIR // V1.04
+            </span>
+            <span className="inline-block h-2 w-2 bg-acid animate-pulse"></span>
           </div>
-          <div className="text-[10px] text-teal-400/80 font-mono mt-0.5 tracking-tight truncate">
-            {activeExperiment ? `EXP: ${activeExperiment.id.slice(0, 14)}...` : 'IDLE :: READY FOR PIPELINE'}
+          <div className="mt-2 text-[10px] text-neutral-400 truncate border-l border-neutral-700 pl-2">
+            {activeExperiment ? (
+              <span className="text-acid">EXP: {activeExperiment.id.slice(0, 16)}</span>
+            ) : (
+              <span className="text-neutral-500">DAEMON: IDLE_LISTENING</span>
+            )}
           </div>
         </div>
 
-        <div className="px-3 text-[10px] font-bold text-teal-300/90 uppercase tracking-widest flex items-center justify-between">
-          <span>Navigation Flow</span>
-          <span className="h-1.5 w-1.5 rounded-full bg-teal-300 animate-pulse"></span>
+        {/* Directory Navigation */}
+        <div className="px-4 pt-3 pb-1 text-[10px] tracking-widest uppercase text-neutral-300 font-bold border-b border-neutral-900">
+          // ROOT_NAVIGATION
         </div>
 
-        <nav className="space-y-1">
+        <nav className="p-2 space-y-1">
           {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
             const isActive = currentTab === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => onSelectTab(item.id)}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150 ${
+                className={`w-full flex items-center justify-between px-2.5 py-2 text-left transition-all ${
                   isActive
-                    ? 'bg-teal-800 text-teal-100 shadow-panel border-l-4 border-teal-300 font-semibold'
-                    : 'text-teal-200/80 hover:bg-teal-900 hover:text-teal-100'
+                    ? 'bg-neutral-900 text-acid font-bold border-l-2 border-acid'
+                    : 'text-neutral-400 hover:text-neutral-100 hover:bg-neutral-950'
                 }`}
               >
-                <div className="flex items-center space-x-2.5 min-w-0">
-                  <div
-                    className={`h-5 w-5 rounded-md flex items-center justify-center font-mono text-[9px] font-bold shrink-0 ${
-                      isActive
-                        ? 'bg-teal-300 text-teal-950'
-                        : 'bg-teal-900/90 text-teal-400 border border-teal-800'
-                    }`}
-                  >
-                    {item.num}
-                  </div>
-                  <span className="truncate">{item.label}</span>
+                <div className="flex items-center space-x-2 min-w-0">
+                  <span className={isActive ? 'text-acid' : 'text-neutral-400'}>
+                    {isActive ? '>' : '$'}
+                  </span>
+                  <span className="text-neutral-300">[{item.num}]</span>
+                  <span className="truncate tracking-tight">{item.slug}</span>
                 </div>
                 {item.badge && (
                   <span
-                    className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-medium shrink-0 ml-1.5 ${
+                    className={`text-[9px] px-1 py-0.2 border uppercase tracking-wider shrink-0 ${
                       isActive
-                        ? 'bg-teal-300/20 text-teal-200 border border-teal-300/30'
-                        : 'bg-teal-900 text-teal-400 border border-teal-850'
+                        ? 'border-acid text-acid bg-acid/10'
+                        : 'border-neutral-800 text-neutral-400 bg-neutral-900'
                     }`}
                   >
                     {item.badge}
@@ -88,20 +75,15 @@ export default function Sidebar({ currentTab, onSelectTab, activeExperiment }) {
         </nav>
       </div>
 
-      {/* Retro-futuristic editorial research spec footer */}
-      <div className="p-3.5 m-3 rounded-xl bg-teal-900/90 border border-teal-800 text-teal-100 shadow-panel space-y-1.5">
-        <div className="flex items-center justify-between text-xs">
-          <div className="flex items-center space-x-1.5">
-            <ShieldCheck className="h-3.5 w-3.5 text-teal-300" />
-            <span className="font-bold text-[11px] text-teal-100 tracking-wide">Responsible AI</span>
-          </div>
-          <span className="text-[9px] bg-teal-800 text-teal-300 px-1.5 py-0.5 rounded font-mono border border-teal-700">
-            NeurIPS '23
-          </span>
+      {/* Terminal Footer Info */}
+      <div className="p-3 border-t border-neutral-800 bg-neutral-950 space-y-2 text-[10px]">
+        <div className="flex items-center justify-between text-neutral-400">
+          <span>PORT: 8000</span>
+          <span className="text-acid">STATUS: OK</span>
         </div>
-        <p className="text-[10px] text-teal-300/80 leading-normal font-normal">
-          Empirical verification of selective forgetting vs retrained golden reference.
-        </p>
+        <div className="text-neutral-300 leading-tight">
+          RESPONSIBLE_AI // GDPR_ART_17
+        </div>
       </div>
     </aside>
   );

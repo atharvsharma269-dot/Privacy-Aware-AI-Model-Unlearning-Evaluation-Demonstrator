@@ -3,65 +3,88 @@
 @tailwind utilities;
 
 :root {
-  --color-deep-teal: #073D3C;
-  --color-dark-petrol: #052E30;
-  --color-main-teal: #0B4B49;
-  --color-muted-turquoise: #3E8F89;
-  --color-seaglass: #9EDBD0;
-  --color-pale-aqua: #DDF2EE;
-  --color-page-bg: #F1F5F2;
-  --color-text-dark: #153D3B;
-  --color-text-light: #E5F5F1;
-  --color-text-secondary: #72918B;
+  --color-page-bg: #F4F4F0;
+  --color-text-dark: #0A0A0A;
+  --color-obsidian: #0A0A0A;
+  --color-acid: #CCFF00;
+  --color-neon: #00FF66;
+  --color-border: #222222;
 }
 
 @layer base {
   body {
     background-color: var(--color-page-bg);
     color: var(--color-text-dark);
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
-    @apply antialiased font-sans selection:bg-teal-800 selection:text-teal-100;
+    @apply antialiased font-sans selection:bg-black selection:text-acid;
   }
 
   h1, h2, h3, h4, h5, h6 {
     color: var(--color-text-dark);
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
+  }
+
+  * {
+    border-radius: 0px !important;
   }
 }
 
-/* Retro-futuristic editorial terminal scrollbars */
+/* Faint blueprint / technical research grid */
+.bg-grid-pattern {
+  background-size: 28px 28px;
+  background-image: 
+    linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+}
+
+.bg-grid-dark {
+  background-size: 24px 24px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+}
+
+/* Stark Brutalist Monospace Scrollbars */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #E8EFEA;
+  background: #EAEAE4;
+  border-left: 1px solid #D5D5CC;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3E8F89;
-  border-radius: 3px;
+  background: #0A0A0A;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #0B4B49;
+  background: #CCFF00;
 }
 
-/* Retro-futuristic geometric panels */
-.retro-panel {
-  background-color: var(--color-pale-aqua);
-  border: 1px solid rgba(11, 75, 73, 0.15);
-  border-radius: 1rem;
+/* Brutalist interactive cards */
+.brutal-card {
+  background-color: #FFFFFF;
+  border: 1px solid #000000;
+  box-shadow: 3px 3px 0px 0px #000000;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 
-.retro-panel-dark {
-  background-color: var(--color-deep-teal);
-  color: var(--color-text-light);
-  border: 1px solid rgba(158, 219, 208, 0.18);
-  border-radius: 1.25rem;
+.brutal-card:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0px 0px #000000;
 }
 
-.retro-badge-label {
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.brutal-card-dark {
+  background-color: #0A0A0A;
+  color: #FFFFFF;
+  border: 1px solid #262626;
+  box-shadow: 3px 3px 0px 0px #000000;
+}
+
+/* Blinking terminal cursor */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.animate-cursor-blink {
+  animation: blink 1s infinite;
 }

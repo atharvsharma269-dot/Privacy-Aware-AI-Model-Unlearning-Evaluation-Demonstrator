@@ -96,7 +96,7 @@ export default function App() {
   const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
 
   return (
-    <div className="flex h-screen bg-teal-50 text-teal-950 overflow-hidden font-sans">
+    <div className="flex h-screen bg-[#F4F4F0] text-black overflow-hidden font-sans bg-grid-pattern">
       {/* Sidebar */}
       <Sidebar
         currentTab={currentTab}
@@ -107,8 +107,8 @@ export default function App() {
       {/* Main Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {isFileProtocol && (
-          <div className="bg-teal-950 text-teal-200 px-4 py-2 text-xs font-mono flex items-center justify-between border-b border-teal-800 shrink-0">
-            <span>Notice: Page opened via file:///. For full real-time API communication, please navigate to <strong>http://127.0.0.1:8000</strong>.</span>
+          <div className="bg-black text-acid px-4 py-2 text-xs font-mono flex items-center justify-between border-b border-black shrink-0">
+            <span>SYS_NOTICE: Page opened via file:///. For full real-time API communication, please navigate to <strong>http://127.0.0.1:8000</strong>.</span>
           </div>
         )}
 

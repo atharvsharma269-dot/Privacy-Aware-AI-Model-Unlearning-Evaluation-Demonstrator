@@ -1,241 +1,252 @@
 import React from 'react';
 import {
-  ShieldAlert,
   ArrowRight,
-  Sparkles,
-  GitCompare,
   Database,
   Trophy,
+  GitCompare,
   Terminal,
-  Activity,
-  CheckCircle2,
 } from 'lucide-react';
 
-export default function Overview({ onNavigate, activeExperiment, experimentsCount, hardware }) {
+export default function Overview({ onNavigate, activeExperiment }) {
   return (
-    <div className="space-y-8 max-w-6xl mx-auto pb-10">
-      {/* Editorial Research Hero Card */}
-      <div className="p-8 md:p-10 rounded-3xl bg-teal-950 text-teal-100 shadow-tactile border border-teal-850 relative overflow-hidden">
-        {/* Subtle geometric grid accent */}
-        <div className="absolute top-0 right-0 w-80 h-80 bg-teal-800/20 rounded-full blur-3xl pointer-events-none -mr-16 -mt-16"></div>
-        <div className="absolute bottom-0 right-1/4 w-56 h-56 bg-teal-500/10 rounded-full blur-2xl pointer-events-none"></div>
+    <div className="space-y-12 max-w-6xl mx-auto pb-16">
+      {/* Editorial Brutalist Hero Section - Breathing canvas with massive typography */}
+      <div className="pt-4 pb-8 border-b-2 border-black space-y-6">
+        <div className="inline-flex items-center space-x-2 border border-black bg-white px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-widest text-black shadow-brutal-sm">
+          <span className="h-2 w-2 bg-acid inline-block"></span>
+          <span>NEURIPS BENCHMARK // GDPR ARTICLE 17 COMPLIANT</span>
+        </div>
 
-        <div className="relative z-10 max-w-3xl space-y-4">
-          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-lg bg-teal-900 border border-teal-700/80 text-teal-300 text-[11px] font-mono font-bold tracking-wider uppercase">
-            <Sparkles className="h-3.5 w-3.5 text-teal-300" />
-            <span>Google NeurIPS Machine Unlearning Benchmark</span>
-          </div>
+        <h1 className="text-5xl sm:text-6xl lg:text-7xl font-sans font-black tracking-tighter text-black uppercase leading-[0.95]">
+          Privacy-Aware <br />
+          <span className="font-serif italic font-normal tracking-normal text-neutral-800">
+            AI Model Unlearning
+          </span> <br />
+          Evaluation Demonstrator
+        </h1>
 
-          <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white leading-tight font-serif">
-            Privacy-Aware AI Model Unlearning Demonstrator
-          </h2>
-
-          <p className="text-teal-200/90 text-sm leading-relaxed font-normal">
-            When users exercise the Right to be Forgotten (GDPR Article 17), simply deleting database records does not eliminate their statistical influence from a trained neural network. This platform provides an interactive research instrument to evaluate selective machine unlearning algorithms against golden retraining references, quantifying privacy leakage, utility retention, and compute efficiency.
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+          <p className="md:col-span-2 font-mono text-xs sm:text-sm text-neutral-800 leading-relaxed bg-white border border-black p-4 shadow-brutal-sm">
+            Deleting raw records from a database does not erase their statistical parameters from a deep neural network. 
+            This research terminal evaluates exact retraining baselines against approximate unlearning algorithms, measuring 
+            empirical privacy erasure, utility retention, and compute speedup under rigorous Membership Inference Attacks (MIA).
           </p>
 
-          <div className="flex flex-wrap gap-3 pt-2">
-            <button
-              onClick={() => onNavigate('live-demo')}
-              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-teal-300 hover:bg-teal-200 text-teal-950 font-bold text-xs uppercase tracking-wider transition shadow-tactile"
-            >
-              <Trophy className="h-4 w-4 text-teal-900" />
-              <span>Launch Live F1 Demo</span>
-            </button>
-            <button
-              onClick={() => onNavigate('training')}
-              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-teal-800 hover:bg-teal-700 text-teal-100 font-bold text-xs uppercase tracking-wider transition border border-teal-700/80 shadow-tactile"
-            >
-              <span>Train Neural Model</span>
-              <ArrowRight className="h-4 w-4 text-teal-300" />
-            </button>
-            <button
-              onClick={() => onNavigate('dataset')}
-              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-teal-900/80 hover:bg-teal-850 text-teal-300 border border-teal-700/60 font-bold text-xs uppercase tracking-wider transition"
-            >
-              <Database className="h-4 w-4 text-teal-400" />
-              <span>Inspect Datasets</span>
-            </button>
+          <div className="space-y-2 border border-black bg-neutral-100 p-4 font-mono text-xs shadow-brutal-sm flex flex-col justify-between">
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-neutral-500 font-bold">
+                SYSTEM SPECIFICATION
+              </div>
+              <div className="mt-2 text-neutral-900 font-bold">
+                CORE: PyTorch 2.x + FastAPI
+              </div>
+              <div className="text-neutral-700 text-[11px] mt-1">
+                BENCHMARKS: Fashion-MNIST / TOFU / Real F1 Facts
+              </div>
+            </div>
+            <div className="pt-2 border-t border-neutral-300 text-[10px] text-neutral-500">
+              AUDITED PROTOCOL // 24/24 TESTS PASSED
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons: Stark black boxes with hover invert and moving arrows */}
+        <div className="flex flex-wrap gap-3 pt-3">
+          <button
+            onClick={() => onNavigate('live-demo')}
+            className="group px-6 py-3.5 bg-black hover:bg-neutral-900 text-white font-mono text-xs font-bold uppercase tracking-wider border border-black shadow-brutal transition-all flex items-center space-x-2 active:translate-x-0.5 active:translate-y-0.5"
+          >
+            <Trophy className="h-4 w-4 text-acid" />
+            <span>Launch Live F1 Demo</span>
+            <span className="group-hover:translate-x-1 transition-transform">&rarr;</span>
+          </button>
+
+          <button
+            onClick={() => onNavigate('training')}
+            className="group px-6 py-3.5 bg-white hover:bg-neutral-100 text-black font-mono text-xs font-bold uppercase tracking-wider border border-black shadow-brutal transition-all flex items-center space-x-2 active:translate-x-0.5 active:translate-y-0.5"
+          >
+            <span>Train Neural Model</span>
+            <span className="group-hover:translate-x-1 transition-transform">&rarr;</span>
+          </button>
+
+          <button
+            onClick={() => onNavigate('dataset')}
+            className="px-6 py-3.5 bg-neutral-200 hover:bg-neutral-300 text-black font-mono text-xs font-bold uppercase tracking-wider border border-black shadow-brutal transition-all flex items-center space-x-2 active:translate-x-0.5 active:translate-y-0.5"
+          >
+            <Database className="h-4 w-4 text-neutral-700" />
+            <span>Inspect Datasets</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Three Fundamental Research Inquiries - Stark Editorial Cards with Faded Large Numbers */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between border-b border-black pb-2">
+          <div className="font-mono text-xs font-bold uppercase tracking-widest text-black flex items-center space-x-2">
+            <span>// 03_FUNDAMENTAL_RESEARCH_INQUIRIES</span>
+          </div>
+          <span className="font-mono text-[10px] text-neutral-500 uppercase">THEORETICAL_FRAMEWORK</span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+          {/* Inquiry 01 */}
+          <div className="relative border border-black bg-white p-6 shadow-brutal overflow-hidden flex flex-col justify-between">
+            <span className="absolute -top-4 -right-2 font-mono text-8xl font-black text-neutral-200 select-none pointer-events-none">
+              01
+            </span>
+            <div className="relative z-10 space-y-3">
+              <div className="font-mono text-[10px] font-bold uppercase tracking-wider bg-black text-white px-2 py-0.5 inline-block">
+                INQUIRY // PRIVACY_ERASURE
+              </div>
+              <h3 className="font-sans font-bold text-lg text-black uppercase leading-tight pt-1">
+                Empirical Forgetting Verification
+              </h3>
+              <p className="font-mono text-xs text-neutral-700 leading-relaxed">
+                Does the approximate unlearning algorithm genuinely eliminate statistical knowledge of the target data, as verified by elevated forget loss and resistance to Membership Inference Attacks (MIA)?
+              </p>
+            </div>
+            <div className="relative z-10 mt-6 pt-3 border-t border-neutral-200 font-mono text-[11px] font-bold text-black flex items-center justify-between">
+              <span>METRIC: MIA ROC-AUC + LOSS</span>
+              <span>&rarr;</span>
+            </div>
+          </div>
+
+          {/* Inquiry 02 */}
+          <div className="relative border border-black bg-white p-6 shadow-brutal overflow-hidden flex flex-col justify-between">
+            <span className="absolute -top-4 -right-2 font-mono text-8xl font-black text-neutral-200 select-none pointer-events-none">
+              02
+            </span>
+            <div className="relative z-10 space-y-3">
+              <div className="font-mono text-[10px] font-bold uppercase tracking-wider bg-black text-white px-2 py-0.5 inline-block">
+                INQUIRY // UTILITY_RETENTION
+              </div>
+              <h3 className="font-sans font-bold text-lg text-black uppercase leading-tight pt-1">
+                Preserved Knowledge Utility
+              </h3>
+              <p className="font-mono text-xs text-neutral-700 leading-relaxed">
+                How much classification accuracy and predictive generalization does the unlearned model preserve on unaffected retained data partitions and independent test sets without catastrophic collapse?
+              </p>
+            </div>
+            <div className="relative z-10 mt-6 pt-3 border-t border-neutral-200 font-mono text-[11px] font-bold text-black flex items-center justify-between">
+              <span>METRIC: RETAIN & TEST ACC</span>
+              <span>&rarr;</span>
+            </div>
+          </div>
+
+          {/* Inquiry 03 */}
+          <div className="relative border border-black bg-white p-6 shadow-brutal overflow-hidden flex flex-col justify-between">
+            <span className="absolute -top-4 -right-2 font-mono text-8xl font-black text-neutral-200 select-none pointer-events-none">
+              03
+            </span>
+            <div className="relative z-10 space-y-3">
+              <div className="font-mono text-[10px] font-bold uppercase tracking-wider bg-black text-white px-2 py-0.5 inline-block">
+                INQUIRY // COMPUTE_ROI
+              </div>
+              <h3 className="font-sans font-bold text-lg text-black uppercase leading-tight pt-1">
+                Computational Speedup Factor
+              </h3>
+              <p className="font-mono text-xs text-neutral-700 leading-relaxed">
+                What is the measured wall-clock runtime speedup achieved by approximate unlearning relative to retraining the golden reference baseline from scratch on the retained training partition?
+              </p>
+            </div>
+            <div className="relative z-10 mt-6 pt-3 border-t border-neutral-200 font-mono text-[11px] font-bold text-black flex items-center justify-between">
+              <span>METRIC: TIME_RETRAIN / TIME_UNLEARN</span>
+              <span>&rarr;</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 3 Core Research Inquiries - Pale Aqua Geometric Panels */}
-      <div>
-        <div className="flex items-center space-x-2 mb-4">
-          <div className="h-7 w-7 rounded-lg bg-teal-100 flex items-center justify-center border border-teal-300/60">
-            <ShieldAlert className="h-4 w-4 text-teal-800" />
+      {/* Experimental Pipeline Protocol - Sharp 4-Stage Blocks */}
+      <div className="border border-black bg-white p-6 shadow-brutal space-y-6">
+        <div className="flex items-center justify-between border-b border-black pb-3">
+          <div className="flex items-center space-x-2 font-mono text-xs font-bold uppercase tracking-widest text-black">
+            <GitCompare className="h-4 w-4 text-black" />
+            <span>EXPERIMENTAL PROTOCOL // 4-STAGE PIPELINE</span>
           </div>
-          <h3 className="text-base font-extrabold text-teal-950">Three Fundamental Research Inquiries</h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Card 1 */}
-          <div className="p-6 rounded-2xl bg-teal-100/70 border border-teal-800/15 shadow-tactile hover:shadow-tactile-hover transition-all flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="h-8 w-8 rounded-lg bg-teal-950 text-teal-300 font-bold text-xs flex items-center justify-center font-mono border border-teal-800">
-                  01
-                </div>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-white/90 text-teal-900 border border-teal-300/60 uppercase">
-                  Forgetting Efficacy
-                </span>
-              </div>
-              <h4 className="font-bold text-teal-950 text-sm">Empirical Forgetting Verification</h4>
-              <p className="text-xs text-teal-800/90 leading-relaxed">
-                Does the approximate unlearning algorithm genuinely eliminate knowledge of forgotten samples, as measured by elevated forget loss and resistance to Membership Inference Attacks (MIA)?
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-teal-800/10 flex items-center text-[11px] font-bold text-teal-900">
-              <span>Evaluated via MIA ROC-AUC & Loss</span>
-              <ArrowRight className="h-3.5 w-3.5 ml-1 text-teal-700" />
-            </div>
-          </div>
-
-          {/* Card 2 */}
-          <div className="p-6 rounded-2xl bg-teal-100/70 border border-teal-800/15 shadow-tactile hover:shadow-tactile-hover transition-all flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="h-8 w-8 rounded-lg bg-teal-950 text-teal-300 font-bold text-xs flex items-center justify-center font-mono border border-teal-800">
-                  02
-                </div>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-white/90 text-teal-900 border border-teal-300/60 uppercase">
-                  Utility Preservation
-                </span>
-              </div>
-              <h4 className="font-bold text-teal-950 text-sm">Retained Knowledge Utility</h4>
-              <p className="text-xs text-teal-800/90 leading-relaxed">
-                How much classification accuracy and generalization capacity does the model retain on unaffected data partitions and independent test splits without suffering catastrophic collapse?
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-teal-800/10 flex items-center text-[11px] font-bold text-teal-900">
-              <span>Evaluated on Retain & Test Splits</span>
-              <ArrowRight className="h-3.5 w-3.5 ml-1 text-teal-700" />
-            </div>
-          </div>
-
-          {/* Card 3 */}
-          <div className="p-6 rounded-2xl bg-teal-100/70 border border-teal-800/15 shadow-tactile hover:shadow-tactile-hover transition-all flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="h-8 w-8 rounded-lg bg-teal-950 text-teal-300 font-bold text-xs flex items-center justify-center font-mono border border-teal-800">
-                  03
-                </div>
-                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-white/90 text-teal-900 border border-teal-300/60 uppercase">
-                  Computational Speedup
-                </span>
-              </div>
-              <h4 className="font-bold text-teal-950 text-sm">Computational ROI & Efficiency</h4>
-              <p className="text-xs text-teal-800/90 leading-relaxed">
-                How much training duration and compute utilization does approximate unlearning save compared to exact retraining from scratch: <code className="text-teal-950 font-bold bg-white/80 px-1 py-0.5 rounded font-mono text-[10px]">Speedup = Retrain / Unlearn</code>?
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-teal-800/10 flex items-center text-[11px] font-bold text-teal-900">
-              <span>Measured in Clock Execution Seconds</span>
-              <ArrowRight className="h-3.5 w-3.5 ml-1 text-teal-700" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Experimental Flow Roadmap */}
-      <div className="p-7 rounded-3xl bg-white border border-teal-850/15 shadow-tactile space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="h-7 w-7 rounded-lg bg-teal-100 flex items-center justify-center border border-teal-300/60">
-              <GitCompare className="h-4 w-4 text-teal-800" />
-            </div>
-            <h3 className="text-base font-extrabold text-teal-950">Experimental Pipeline Protocol</h3>
-          </div>
-          <span className="text-xs font-mono text-teal-700 font-bold">4-STAGE VERIFICATION CYCLE</span>
+          <span className="font-mono text-[11px] bg-black text-white px-2 py-0.5 uppercase font-bold">
+            RIGOROUS EVALUATION
+          </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Step 1 */}
-          <div className="p-5 rounded-2xl bg-teal-50 border border-teal-850/10 space-y-2.5 hover:border-teal-400 transition">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-teal-950 text-teal-200">
-                Stage A
+          <div className="border border-black p-4 bg-neutral-50 space-y-2">
+            <div className="flex items-center justify-between font-mono">
+              <span className="text-[10px] font-bold uppercase bg-black text-white px-1.5 py-0.5">
+                [ STAGE_A ]
               </span>
-              <div className="h-6 w-6 rounded-md bg-teal-200 text-teal-950 flex items-center justify-center font-bold text-xs font-mono">
-                1
-              </div>
+              <span className="text-xs font-bold text-neutral-500">01</span>
             </div>
-            <h5 className="font-bold text-teal-950 text-sm">Original Training</h5>
-            <p className="text-xs text-teal-800/80 leading-relaxed">
-              Train baseline neural model on the complete training set. Save checkpoint and establish benchmark metrics.
+            <h4 className="font-sans font-bold text-sm text-black uppercase pt-1">Original Training</h4>
+            <p className="font-mono text-[11px] text-neutral-700 leading-normal">
+              Train neural network on complete training data D_train. Save original checkpoint and record baseline metrics.
             </p>
           </div>
 
           {/* Step 2 */}
-          <div className="p-5 rounded-2xl bg-teal-50 border border-teal-850/10 space-y-2.5 hover:border-teal-400 transition">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-teal-900 text-teal-200">
-                Stage B
+          <div className="border border-black p-4 bg-neutral-50 space-y-2">
+            <div className="flex items-center justify-between font-mono">
+              <span className="text-[10px] font-bold uppercase bg-black text-white px-1.5 py-0.5">
+                [ STAGE_B ]
               </span>
-              <div className="h-6 w-6 rounded-md bg-teal-200 text-teal-950 flex items-center justify-center font-bold text-xs font-mono">
-                2
-              </div>
+              <span className="text-xs font-bold text-neutral-500">02</span>
             </div>
-            <h5 className="font-bold text-teal-950 text-sm">Deletion Request</h5>
-            <p className="text-xs text-teal-800/80 leading-relaxed">
-              Submit deletion request (Random, Class-based, or Index-specific). Create strictly disjoint Retain and Forget subsets.
+            <h4 className="font-sans font-bold text-sm text-black uppercase pt-1">Deletion Request</h4>
+            <p className="font-mono text-[11px] text-neutral-700 leading-normal">
+              Partition training set into strictly disjoint Retain and Forget subsets (Random, Class-based, or Index-targeted).
             </p>
           </div>
 
           {/* Step 3 */}
-          <div className="p-5 rounded-2xl bg-teal-50 border border-teal-850/10 space-y-2.5 hover:border-teal-400 transition">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-teal-800 text-teal-200">
-                Stage C & D
+          <div className="border border-black p-4 bg-neutral-50 space-y-2">
+            <div className="flex items-center justify-between font-mono">
+              <span className="text-[10px] font-bold uppercase bg-black text-white px-1.5 py-0.5">
+                [ STAGE_C+D ]
               </span>
-              <div className="h-6 w-6 rounded-md bg-teal-200 text-teal-950 flex items-center justify-center font-bold text-xs font-mono">
-                3
-              </div>
+              <span className="text-xs font-bold text-neutral-500">03</span>
             </div>
-            <h5 className="font-bold text-teal-950 text-sm">Retrain vs Unlearn</h5>
-            <p className="text-xs text-teal-800/80 leading-relaxed">
-              Retrain golden baseline on Retain data from scratch. Execute approximate unlearning (Retain Fine-Tuning or Gradient Ascent).
+            <h4 className="font-sans font-bold text-sm text-black uppercase pt-1">Retrain vs Unlearn</h4>
+            <p className="font-mono text-[11px] text-neutral-700 leading-normal">
+              Retrain golden baseline on D_retain from scratch. In parallel, run approximate unlearning from original checkpoint.
             </p>
           </div>
 
           {/* Step 4 */}
-          <div className="p-5 rounded-2xl bg-teal-50 border border-teal-850/10 space-y-2.5 hover:border-teal-400 transition">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-teal-700 text-teal-200">
-                Stage E
+          <div className="border border-black p-4 bg-neutral-50 space-y-2">
+            <div className="flex items-center justify-between font-mono">
+              <span className="text-[10px] font-bold uppercase bg-black text-white px-1.5 py-0.5">
+                [ STAGE_E ]
               </span>
-              <div className="h-6 w-6 rounded-md bg-teal-200 text-teal-950 flex items-center justify-center font-bold text-xs font-mono">
-                4
-              </div>
+              <span className="text-xs font-bold text-neutral-500">04</span>
             </div>
-            <h5 className="font-bold text-teal-950 text-sm">3-Way Evaluation</h5>
-            <p className="text-xs text-teal-800/80 leading-relaxed">
-              Compare Original, Retrained, and Unlearned models: evaluate forget loss, MIA ROC-AUC, prediction agreement, and speedup.
+            <h4 className="font-sans font-bold text-sm text-black uppercase pt-1">3-Model Evaluation</h4>
+            <p className="font-mono text-[11px] text-neutral-700 leading-normal">
+              Conduct side-by-side verification: MIA ROC-AUC, prediction agreement, probability KL divergence, and speedup.
             </p>
           </div>
         </div>
       </div>
 
-      {/* Active Experiment Capsule Banner */}
+      {/* Active Experiment Readout Banner */}
       {activeExperiment && (
-        <div className="p-6 rounded-3xl bg-teal-950 text-teal-100 border border-teal-850 shadow-tactile flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="border-2 border-black bg-black text-white p-6 shadow-brutal flex flex-col md:flex-row md:items-center justify-between gap-4 font-mono">
           <div className="space-y-1">
-            <div className="flex items-center space-x-2">
-              <span className="h-2 w-2 rounded-full bg-teal-300 animate-pulse"></span>
-              <span className="text-xs font-bold text-teal-300 uppercase tracking-widest font-mono">Active Experiment Selected</span>
+            <div className="flex items-center space-x-2 text-[11px] text-acid font-bold uppercase">
+              <span className="h-2 w-2 bg-acid inline-block"></span>
+              <span>ACTIVE_EXPERIMENT_LOADED</span>
             </div>
-            <h4 className="text-xl font-bold text-white font-serif">{activeExperiment.name}</h4>
-            <p className="text-xs text-teal-300/80">
-              Dataset: <span className="font-mono text-white font-semibold">{activeExperiment.dataset_name}</span> | Model: <span className="font-mono text-white font-semibold">{activeExperiment.model_name.toUpperCase()}</span> | Seed: <span className="font-mono text-white font-semibold">{activeExperiment.seed}</span> | Status: <span className="font-mono text-teal-300 font-bold">{activeExperiment.status}</span>
+            <h3 className="font-sans font-bold text-xl text-white uppercase tracking-tight">{activeExperiment.name}</h3>
+            <p className="text-neutral-400 text-xs">
+              DATASET: <span className="text-white font-bold">{activeExperiment.dataset_name}</span> | ARCH: <span className="text-white font-bold">{activeExperiment.model_name.toUpperCase()}</span> | STATUS: <span className="text-acid font-bold">{activeExperiment.status}</span>
             </p>
           </div>
           <button
             onClick={() => onNavigate('evaluation')}
-            className="px-5 py-2.5 rounded-xl bg-teal-300 hover:bg-teal-200 text-teal-950 font-bold text-xs uppercase tracking-wider transition self-start md:self-auto shrink-0 flex items-center space-x-2 shadow-tactile"
+            className="px-5 py-2.5 bg-acid text-black font-mono text-xs font-bold uppercase tracking-wider hover:bg-white transition flex items-center space-x-2 border border-black shadow-brutal-sm"
           >
-            <span>View Full Evaluation</span>
-            <ArrowRight className="h-4 w-4" />
+            <span>Inspect Benchmark Matrix</span>
+            <span>&rarr;</span>
           </button>
         </div>
       )}

@@ -9,59 +9,38 @@ export default function MetricCard({
   variant = 'default',
   badge,
 }) {
-  const getAccentStyles = () => {
-    switch (variant) {
-      case 'emerald':
-        return {
-          iconBg: 'bg-teal-100 text-teal-800 border-teal-300/60',
-          borderAccent: 'border-l-4 border-l-teal-600',
-        };
-      case 'amber':
-        return {
-          iconBg: 'bg-amber-50 text-amber-800 border-amber-300/60',
-          borderAccent: 'border-l-4 border-l-amber-600',
-        };
-      case 'purple':
-      case 'rose':
-        return {
-          iconBg: 'bg-rose-50 text-rose-800 border-rose-300/60',
-          borderAccent: 'border-l-4 border-l-rose-600',
-        };
-      case 'blue':
-      default:
-        return {
-          iconBg: 'bg-teal-50 text-teal-900 border-teal-300/60',
-          borderAccent: 'border-l-4 border-l-teal-800',
-        };
-    }
-  };
-
-  const styles = getAccentStyles();
-
   return (
-    <div
-      className={`p-5 rounded-2xl bg-white border border-teal-800/15 shadow-tactile hover:shadow-tactile-hover transition-all duration-150 relative overflow-hidden ${styles.borderAccent}`}
-    >
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[11px] font-bold tracking-wider uppercase text-teal-800/80">{title}</span>
-        {Icon && (
-          <div className={`h-8 w-8 rounded-xl border flex items-center justify-center ${styles.iconBg} shadow-sm`}>
-            <Icon className="h-4 w-4" />
-          </div>
-        )}
-      </div>
-      <div className="flex items-baseline space-x-1.5">
-        <span className="text-3xl font-extrabold font-mono tracking-tight text-teal-950">
-          {value !== undefined && value !== null ? value : '--'}
-        </span>
-        {unit && <span className="text-xs font-semibold text-teal-700 font-mono">{unit}</span>}
-        {badge && (
-          <span className="ml-2 text-[10px] px-2 py-0.5 rounded-md font-mono font-bold bg-teal-100 text-teal-900 border border-teal-300/60">
-            {badge}
+    <div className="p-5 border border-black bg-white shadow-brutal flex flex-col justify-between font-mono relative">
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[10px] font-bold tracking-widest uppercase text-neutral-600">
+            {title}
           </span>
-        )}
+          {badge && (
+            <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 border border-black bg-neutral-100 text-black">
+              {badge}
+            </span>
+          )}
+          {Icon && (
+            <div className="h-6 w-6 border border-black bg-black text-white flex items-center justify-center">
+              <Icon className="h-3.5 w-3.5" />
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-baseline space-x-1.5 my-1">
+          <span className="text-3xl font-black tracking-tight text-black font-sans">
+            {value !== undefined && value !== null ? value : '--'}
+          </span>
+          {unit && <span className="text-xs font-bold text-neutral-600">{unit}</span>}
+        </div>
       </div>
-      {subtitle && <p className="text-[11px] text-teal-700/80 mt-1.5 font-medium leading-tight">{subtitle}</p>}
+
+      {subtitle && (
+        <div className="mt-3 pt-2 border-t border-neutral-200 text-[10px] text-neutral-600 leading-tight">
+          {subtitle}
+        </div>
+      )}
     </div>
   );
 }
