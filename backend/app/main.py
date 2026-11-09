@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from .database.db import init_db
-from .api import datasets, experiments, jobs, export, f1_demo
+from .api import datasets, experiments, jobs, export, f1_demo, tofu_demo
 from ml.utils.hardware import get_hardware_info
 
 # Initialize database schema
@@ -31,7 +31,20 @@ app.include_router(datasets.router)
 app.include_router(experiments.router)
 app.include_router(jobs.router)
 app.include_router(export.router)
+app.include_router(tofu_demo.router)
 app.include_router(f1_demo.router)
+
+
+@app.get("/api")
+def api_index():
+    return {
+        "status": "online",
+        "title": "Privacy-Aware AI Model Unlearning Evaluation Demonstrator API",
+        "version": "1.0.0",
+        "docs_url": "/docs",
+        "health_url": "/api/health",
+        "interactive_ui_url": "/",
+    }
 
 
 @app.get("/api/health")
@@ -44,7 +57,7 @@ def health_check():
 
 
 # Static frontend hosting for unified single-command execution
-DIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../frontend/dist"))
+DIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../frontend/dist"))
 if not os.path.exists(DIST_DIR):
     DIST_DIR = os.path.abspath("./frontend/dist")
 

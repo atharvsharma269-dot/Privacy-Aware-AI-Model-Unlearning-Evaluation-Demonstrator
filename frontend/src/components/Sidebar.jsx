@@ -2,14 +2,20 @@ import React from 'react';
 
 const NAV_ITEMS = [
   { id: 'overview', num: '01', slug: 'OVERVIEW', badge: null },
-  { id: 'live-demo', num: 'F1', slug: 'LIVE_DEMO', badge: 'LIVE' },
-  { id: 'dataset', num: '02', slug: 'DATASET_EXPLORER', badge: null },
-  { id: 'training', num: '03', slug: 'MODEL_TRAINING', badge: 'STAGE_A' },
-  { id: 'forgetting', num: '04', slug: 'FORGETTING_REQ', badge: 'STAGE_B' },
-  { id: 'unlearning', num: '05', slug: 'UNLEARNING_LAB', badge: 'STAGE_C+D' },
-  { id: 'evaluation', num: '06', slug: 'EVALUATION_METRICS', badge: 'STAGE_E' },
-  { id: 'history', num: '07', slug: 'AUDIT_LOG', badge: null },
-  { id: 'insights', num: '08', slug: 'RESEARCH_INSIGHTS', badge: 'ANALYSIS' },
+  { id: 'chat', num: '02', slug: 'PRIVACY_AI_CHAT', badge: 'LIVE' },
+  { id: 'dataset', num: '03', slug: 'DATASET_EXPLORER', badge: 'TOFU' },
+  { id: 'forgetting', num: '04', slug: 'FORGETTING_REQ', badge: null },
+  { id: 'provenance', num: '05', slug: 'PROVENANCE_GRAPH', badge: 'DAG' },
+  { id: 'impact', num: '06', slug: 'IMPACT_ANALYSIS', badge: null },
+  { id: 'training', num: '07', slug: 'MODEL_TRAINING', badge: 'STAGE_A' },
+  { id: 'unlearning', num: '08', slug: 'UNLEARNING_LAB', badge: 'STAGE_C+D' },
+  { id: 'arena', num: '09', slug: 'BENCHMARK_ARENA', badge: 'STUDY' },
+  { id: 'evaluation', num: '10', slug: 'EVALUATION_METRICS', badge: '3-MODEL' },
+  { id: 'redteam', num: '11', slug: 'PRIVACY_RED_TEAM', badge: 'ATTACK' },
+  { id: 'history', num: '12', slug: 'EXPERIMENT_HISTORY', badge: null },
+  { id: 'audit', num: '13', slug: 'AUDIT_HISTORY', badge: 'LOG' },
+  { id: 'reports', num: '14', slug: 'RESEARCH_REPORTS', badge: 'EXPORT' },
+  { id: 'settings', num: '15', slug: 'SETTINGS', badge: 'SYSTEM' },
 ];
 
 export default function Sidebar({ currentTab, onSelectTab, activeExperiment }) {
@@ -38,7 +44,7 @@ export default function Sidebar({ currentTab, onSelectTab, activeExperiment }) {
           // ROOT_NAVIGATION
         </div>
 
-        <nav className="p-2 space-y-1">
+        <nav className="p-2 space-y-0.5 overflow-y-auto max-h-[calc(100vh-140px)]">
           {NAV_ITEMS.map((item) => {
             const isActive = currentTab === item.id;
             return (

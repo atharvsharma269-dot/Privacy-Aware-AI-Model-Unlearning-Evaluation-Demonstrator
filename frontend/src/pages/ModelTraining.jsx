@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { PlayCircle, Cpu, Sliders, CheckCircle2, AlertCircle, RefreshCw, BarChart2 } from 'lucide-react';
+import { PlayCircle, Cpu, Sliders, CheckCircle2, AlertCircle, RefreshCw, BarChart2, StopCircle, AlertTriangle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
 import { api } from '../services/api';
 
-export default function ModelTraining({ activeExperiment, activeJob, onExperimentUpdated, onStartJob }) {
+export default function ModelTraining({ activeExperiment, activeJob, onExperimentUpdated, onStartJob, onCancelJob }) {
   const [datasetName, setDatasetName] = useState(activeExperiment?.dataset_name || 'fashion_mnist');
   const [modelType, setModelType] = useState(activeExperiment?.model_name || 'mlp');
   const [epochs, setEpochs] = useState(activeExperiment?.train_config?.epochs || 5);
@@ -12,21 +12,13 @@ export default function ModelTraining({ activeExperiment, activeJob, onExperimen
   const [subsampleSize, setSubsampleSize] = useState(activeExperiment?.train_config?.subsample_size || 5000);
   const [optimizer, setOptimizer] = useState('adam');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [showConfirmCancel, setShowConfirmCancel] = useState(false);
   const [error, setError] = useState(null);
 
   const isTrained = activeExperiment?.status !== 'CREATED' && activeExperiment?.original_checkpoint_path;
 
   const handleStartTraining = async () => {
-    console.log('[ModelTraining] Start training requested:', {
-      activeExperimentId: activeExperiment?.id,
-      datasetName,
-      modelType,
-      epochs,
-      batchSize,
-      learningRate,
-      optimizer,
-      subsampleSize,
-    });
     setIsSubmitting(true);
     setError(null);
     try {
@@ -48,10 +40,8 @@ export default function ModelTraining({ activeExperiment, activeJob, onExperimen
             subsample_size: subsampleSize ? parseInt(subsampleSize) : null,
           },
         };
-        console.log('[ModelTraining] Creating experiment before training:', payload);
         const newExp = await api.createExperiment(payload);
         expId = newExp.id;
-        console.log('[ModelTraining] Experiment created:', newExp.id);
         onExperimentUpdated(newExp);
       }
 
@@ -62,10 +52,7 @@ export default function ModelTraining({ activeExperiment, activeJob, onExperimen
         optimizer,
         subsample_size: subsampleSize ? parseInt(subsampleSize) : null,
       };
-      console.log(`[ModelTraining] Calling api.trainOriginalModel(${expId}) with:`, trainPayload);
       const jobData = await api.trainOriginalModel(expId, trainPayload);
-      console.log('[ModelTraining] Training job received:', jobData);
-
       onStartJob(jobData.job_id);
     } catch (err) {
       console.error('[ModelTraining] Training error:', err);
@@ -75,11 +62,35 @@ export default function ModelTraining({ activeExperiment, activeJob, onExperimen
     }
   };
 
+  const handleCancelTraining = async () => {
+    if (!activeJob?.id) return;
+    setIsCancelling(true);
+    setError(null);
+    try {
+      if (onCancelJob) {
+        await onCancelJob(activeJob.id);
+      } else {
+        await api.cancelJob(activeJob.id);
+      }
+      setShowConfirmCancel(false);
+    } catch (err) {
+      setError(err.message || 'Failed to cancel training job');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   const isCurrentTrainingJob = activeJob?.job_type === 'TRAIN_ORIGINAL' && activeJob?.experiment_id === activeExperiment?.id;
+  const isJobRunning = isCurrentTrainingJob && (activeJob?.status === 'RUNNING' || activeJob?.status === 'QUEUED');
+  const isCancellationRequested = isCurrentTrainingJob && activeJob?.status === 'CANCELLATION_REQUESTED';
+  const isCancelled = isCurrentTrainingJob && activeJob?.status === 'CANCELLED';
+
   const liveTelemetry = (isCurrentTrainingJob && activeJob?.telemetry?.length > 0) ? activeJob.telemetry : null;
   const trainHistory = (liveTelemetry && liveTelemetry.length > 0)
     ? liveTelemetry
     : (activeExperiment?.metrics?.original_model?.history || []);
+
+  const curTelemetry = activeJob?.current_telemetry || {};
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-10">
@@ -94,22 +105,134 @@ export default function ModelTraining({ activeExperiment, activeJob, onExperimen
           </div>
           <h2 className="text-xl font-bold text-teal-950 mt-1 font-serif">Train Original Model</h2>
           <p className="text-xs text-teal-700/80 mt-1 font-medium">
-            Train a genuine neural network on the full training pool (Retain + Forget samples together). Checkpoints and telemetry will be recorded.
+            Train a genuine neural network on the full training pool (Retain + Forget samples together). Checkpoints are atomically protected.
           </p>
         </div>
 
-        {isTrained && (
-          <div className="flex items-center space-x-2 bg-teal-100 border border-teal-300 text-teal-950 px-4 py-2 rounded-xl text-xs font-bold shadow-sm font-mono">
-            <CheckCircle2 className="h-4 w-4 text-teal-800" />
-            <span>CHECKPOINT: original.pt</span>
-          </div>
-        )}
+        <div className="flex items-center space-x-2">
+          {isJobRunning && (
+            <div className="flex items-center space-x-2">
+              <span className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-950 text-xs font-mono font-bold animate-pulse">
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                <span>TRAINING ACTIVE ({Math.round(activeJob.progress || 0)}%)</span>
+              </span>
+              <button
+                onClick={() => setShowConfirmCancel(true)}
+                disabled={isCancelling || isCancellationRequested}
+                className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-mono font-bold uppercase transition flex items-center space-x-1 border border-black shadow-sm"
+              >
+                <StopCircle className="h-3.5 w-3.5" />
+                <span>{isCancellationRequested ? 'Halting...' : 'Cancel'}</span>
+              </button>
+            </div>
+          )}
+
+          {isCancelled && (
+            <div className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-neutral-200 border border-neutral-400 text-neutral-800 text-xs font-mono font-bold">
+              <StopCircle className="h-4 w-4 text-neutral-600" />
+              <span>LAST JOB CANCELLED</span>
+            </div>
+          )}
+
+          {isTrained && !isJobRunning && (
+            <div className="flex items-center space-x-2 bg-teal-100 border border-teal-300 text-teal-950 px-4 py-2 rounded-xl text-xs font-bold shadow-sm font-mono">
+              <CheckCircle2 className="h-4 w-4 text-teal-800" />
+              <span>CHECKPOINT: original.pt (COMPLETE)</span>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Cancellation Prompt Modal Banner */}
+      {showConfirmCancel && (
+        <div className="p-5 rounded-2xl bg-amber-50 border-2 border-amber-400 text-amber-950 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 font-mono text-xs">
+          <div className="flex items-center space-x-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+            <div>
+              <p className="font-bold uppercase">Confirm Training Interruption</p>
+              <p className="text-[11px] text-amber-900 mt-0.5 font-sans">
+                PyTorch backpropagation will safely halt at the current batch boundary. Incomplete weights in the staging file (<code>original.pt.tmp</code>) will be cleanly discarded, preserving the integrity of previous models.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 shrink-0">
+            <button
+              onClick={() => setShowConfirmCancel(false)}
+              disabled={isCancelling}
+              className="px-3.5 py-1.5 rounded-lg bg-neutral-200 hover:bg-neutral-300 text-black font-bold uppercase"
+            >
+              Resume
+            </button>
+            <button
+              onClick={handleCancelTraining}
+              disabled={isCancelling}
+              className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold uppercase flex items-center space-x-1"
+            >
+              {isCancelling ? <RefreshCw className="h-3 w-3 animate-spin" /> : <StopCircle className="h-3 w-3" />}
+              <span>{isCancelling ? 'Halting Worker...' : 'Yes, Halt Training'}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center space-x-2 font-medium">
           <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {/* Live Telemetry Card if Job Running */}
+      {isCurrentTrainingJob && (
+        <div className="p-6 rounded-3xl bg-neutral-900 text-white border border-black shadow-tactile font-mono space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-neutral-800">
+            <div className="flex items-center space-x-2 text-xs">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#00FF66] animate-pulse"></span>
+              <span className="font-bold uppercase tracking-wider text-neutral-300">PyTorch Worker Live Telemetry</span>
+            </div>
+            <span className="text-[11px] text-neutral-400 font-bold uppercase">
+              STATUS: <strong className={isCancelled ? 'text-amber-400' : isJobRunning ? 'text-[#00FF66]' : 'text-white'}>{activeJob.status}</strong>
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-xs">
+            <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800">
+              <span className="text-neutral-500 block text-[10px] uppercase font-bold">Epoch</span>
+              <span className="text-lg font-bold text-white">
+                {curTelemetry.epoch ?? (trainHistory.length > 0 ? trainHistory[trainHistory.length - 1].epoch : 0)} / {epochs}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800">
+              <span className="text-neutral-500 block text-[10px] uppercase font-bold">Batch</span>
+              <span className="text-lg font-bold text-white">
+                {curTelemetry.batch ?? '--'} / {curTelemetry.total_batches ?? '--'}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800">
+              <span className="text-neutral-500 block text-[10px] uppercase font-bold">Batch Loss</span>
+              <span className="text-lg font-bold text-[#00FF66]">
+                {curTelemetry.batch_loss != null ? curTelemetry.batch_loss.toFixed(4) : '--'}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800">
+              <span className="text-neutral-500 block text-[10px] uppercase font-bold">Val Accuracy</span>
+              <span className="text-lg font-bold text-teal-300">
+                {trainHistory.length > 0 ? `${trainHistory[trainHistory.length - 1].val_accuracy}%` : '--'}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800">
+              <span className="text-neutral-500 block text-[10px] uppercase font-bold">Elapsed</span>
+              <span className="text-lg font-bold text-white">
+                {curTelemetry.elapsed_seconds != null ? `${curTelemetry.elapsed_seconds.toFixed(1)}s` : '--'}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-neutral-950 border border-neutral-800">
+              <span className="text-neutral-500 block text-[10px] uppercase font-bold">Checkpoint</span>
+              <span className="text-xs font-bold text-neutral-300 truncate block mt-1">
+                {isCancelled ? 'DISCARDED (.tmp)' : isTrained ? 'ATOMIC PROMOTED' : 'STAGING (.tmp)'}
+              </span>
+            </div>
+          </div>
         </div>
       )}
 
@@ -178,10 +301,10 @@ export default function ModelTraining({ activeExperiment, activeJob, onExperimen
               <input
                 type="range"
                 min="1"
-                max="15"
+                max="20"
                 value={epochs}
                 onChange={(e) => setEpochs(e.target.value)}
-                className="w-full accent-teal-700 cursor-pointer"
+                className="w-full accent-teal-800"
               />
             </div>
 
@@ -191,7 +314,7 @@ export default function ModelTraining({ activeExperiment, activeJob, onExperimen
               <select
                 value={batchSize}
                 onChange={(e) => setBatchSize(e.target.value)}
-                className="w-full bg-teal-50 border border-teal-850/20 rounded-xl px-3.5 py-2 text-teal-950 font-medium focus:ring-2 focus:ring-teal-700 focus:outline-none"
+                className="w-full bg-teal-50 border border-teal-850/20 rounded-xl px-3.5 py-2 text-teal-950 font-medium font-mono focus:ring-2 focus:ring-teal-700 focus:outline-none"
               >
                 <option value="32">32 samples / batch</option>
                 <option value="64">64 samples / batch (Standard)</option>
@@ -231,13 +354,18 @@ export default function ModelTraining({ activeExperiment, activeJob, onExperimen
 
           <button
             onClick={handleStartTraining}
-            disabled={isSubmitting}
+            disabled={isSubmitting || isJobRunning}
             className="w-full py-3.5 rounded-xl bg-teal-950 hover:bg-teal-900 text-white font-bold text-xs uppercase tracking-wider transition flex items-center justify-center space-x-2 shadow-tactile disabled:opacity-50"
           >
             {isSubmitting ? (
               <>
                 <RefreshCw className="h-4 w-4 animate-spin text-teal-300" />
                 <span>Initializing PyTorch Job...</span>
+              </>
+            ) : isJobRunning ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin text-teal-300" />
+                <span>Training In Progress...</span>
               </>
             ) : (
               <>
@@ -256,12 +384,6 @@ export default function ModelTraining({ activeExperiment, activeJob, onExperimen
               <span>Training Convergence & Telemetry</span>
             </h3>
             <div className="flex items-center space-x-2">
-              {isCurrentTrainingJob && activeJob?.status === 'RUNNING' && (
-                <span className="text-xs text-amber-900 font-mono font-bold bg-amber-100 px-3 py-1 rounded-md border border-amber-300 flex items-center space-x-1 animate-pulse">
-                  <RefreshCw className="h-3 w-3 animate-spin" />
-                  <span>TRAINING LIVE ({Math.round(activeJob.progress || 0)}%)</span>
-                </span>
-              )}
               {isTrained && activeExperiment?.metrics?.original_model?.test?.accuracy && (
                 <span className="text-xs text-teal-950 font-mono font-bold bg-teal-100 px-3 py-1 rounded-md border border-teal-300">
                   Final Test Acc: {activeExperiment?.metrics?.original_model?.test?.accuracy}%
@@ -269,13 +391,6 @@ export default function ModelTraining({ activeExperiment, activeJob, onExperimen
               )}
             </div>
           </div>
-
-          {isCurrentTrainingJob && activeJob?.status === 'RUNNING' && (
-            <div className="p-3 bg-neutral-900 text-white rounded-xl font-mono text-xs flex items-center justify-between border border-black">
-              <span>CURRENT STEP: {activeJob.current_step || 'Processing batch...'}</span>
-              <span className="text-[#00FF66]">EPOCHS RECORDED: {trainHistory.length}/{epochs}</span>
-            </div>
-          )}
 
           {trainHistory.length > 0 ? (
             <div className="h-64 w-full">

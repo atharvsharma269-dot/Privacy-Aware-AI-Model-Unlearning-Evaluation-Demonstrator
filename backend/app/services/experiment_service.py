@@ -1,9 +1,10 @@
 import datetime
+import hashlib
 import json
 import logging
 import os
 import uuid
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Callable
 import torch
 import torch.nn as nn
 from ml.datasets.loader import load_raw_dataset
@@ -20,6 +21,7 @@ from ml.evaluation import (
 )
 from ml.utils.seed import set_seed
 from ml.utils.hardware import get_device, get_hardware_info
+from ml.utils.exceptions import CancellationError
 from ..database.db import get_db_connection
 
 logger = logging.getLogger("unlearning.experiments")
@@ -48,6 +50,8 @@ class ExperimentService:
         model_name: str,
         seed: int = 42,
         train_config: Optional[Dict[str, Any]] = None,
+        knowledge_store_version: Optional[str] = "v1.0-clean",
+        model_baseline: Optional[str] = "original",
     ) -> Dict[str, Any]:
         exp_id = f"exp_{uuid.uuid4().hex[:10]}"
         now = datetime.datetime.utcnow().isoformat()
@@ -67,8 +71,8 @@ class ExperimentService:
         c.execute("""
             INSERT INTO experiments (
                 id, name, description, dataset_name, model_name, status, seed,
-                created_at, updated_at, train_config
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                created_at, updated_at, train_config, knowledge_store_version, model_baseline
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             exp_id,
             name,
@@ -80,6 +84,8 @@ class ExperimentService:
             now,
             now,
             json.dumps(default_config),
+            knowledge_store_version or "v1.0-clean",
+            model_baseline or "original",
         ))
         conn.commit()
         conn.close()
@@ -148,7 +154,37 @@ class ExperimentService:
             "unlearned_checkpoint_path": row["unlearned_checkpoint_path"],
             "metrics": metrics,
             "insights": json.loads(row["insights"]) if row["insights"] else None,
+            "knowledge_store_version": row["knowledge_store_version"] if "knowledge_store_version" in row.keys() and row["knowledge_store_version"] else "v1.0-clean",
+            "model_baseline": row["model_baseline"] if "model_baseline" in row.keys() and row["model_baseline"] else "original",
         }
+
+    def load_model_checkpoint(self, exp_id: str, checkpoint_type: str = "original") -> Tuple[Any, Dict[str, Any]]:
+        """
+        Safely loads and verifies a model checkpoint for an experiment.
+        Strictly validates that the checkpoint belongs to exp_id and matches expected model_type.
+        Prevents unlearned checkpoints from being loaded as original baseline.
+        """
+        exp = self.get_experiment(exp_id)
+        if not exp:
+            raise ValueError(f"Experiment '{exp_id}' not found.")
+
+        path_key = f"{checkpoint_type}_checkpoint_path"
+        path = exp.get(path_key)
+        if not path or not os.path.exists(path):
+            raise FileNotFoundError(f"{checkpoint_type.capitalize()} checkpoint for experiment '{exp_id}' does not exist at {path}.")
+
+        ckpt = torch.load(path, map_location="cpu", weights_only=False)
+        meta = ckpt.get("metadata", {})
+        actual_type = meta.get("model_type")
+
+        if checkpoint_type == "original" and actual_type == "unlearned":
+            raise ValueError(f"Integrity violation: {path} is an unlearned checkpoint, cannot be loaded as original model baseline.")
+        if actual_type and actual_type != checkpoint_type:
+            raise ValueError(f"Model type mismatch: Expected {checkpoint_type}, got {actual_type} in {path}.")
+
+        model = get_model(exp["model_name"])
+        model.load_state_dict(ckpt["model_state_dict"])
+        return model, meta
 
     def list_experiments(self) -> List[Dict[str, Any]]:
         conn = get_db_connection()
@@ -210,6 +246,7 @@ class ExperimentService:
         exp_id: str,
         config_override: Optional[Dict[str, Any]] = None,
         step_callback: Optional[Any] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         exp = self.get_experiment(exp_id)
         if not exp:
@@ -219,6 +256,13 @@ class ExperimentService:
         config = exp.get("train_config") or {}
         if config_override:
             config.update(config_override)
+            if "subsample_size" in config_override:
+                self._partitioners.pop(exp_id, None)
+                conn = get_db_connection()
+                c = conn.cursor()
+                c.execute("UPDATE experiments SET train_config = ? WHERE id = ?", (json.dumps(config), exp_id))
+                conn.commit()
+                conn.close()
 
         partitioner = self._get_or_create_partitioner(exp_id)
         # Initial training is on the full available train pool (Retain + Forget together)
@@ -240,6 +284,30 @@ class ExperimentService:
         epochs = config.get("epochs", 5)
         batch_size = config.get("batch_size", 64)
 
+        checkpoint_path = os.path.join(self.checkpoints_dir, exp_id, "original.pt")
+
+        def on_batch(event):
+            if step_callback:
+                ep = event["epoch"]
+                b = event["batch"]
+                total_b = event["batches_total"]
+                prog = ((ep - 1) / epochs + (b / total_b) / epochs) * 90.0
+                step_callback({
+                    "progress": prog,
+                    "current_step": f"Training Original Model - Epoch {ep}/{epochs} - Batch {b}/{total_b}",
+                    "current_telemetry": {
+                        "epoch": ep,
+                        "epochs_total": epochs,
+                        "batch": b,
+                        "batches_total": total_b,
+                        "train_loss": event["train_loss"],
+                        "train_accuracy": event["train_accuracy"],
+                        "elapsed_seconds": event["elapsed_seconds"],
+                        "status": "RUNNING",
+                        "checkpoint_status": "in_progress",
+                    },
+                })
+
         def on_epoch(event):
             if step_callback:
                 ep = event["epoch"]
@@ -249,67 +317,109 @@ class ExperimentService:
                     "current_step": f"Training Original Model Epoch {ep}/{epochs}",
                     "log": f"Original Model - Epoch {ep}/{epochs} - Train Loss: {event['data']['train_loss']} - Train Acc: {event['data']['train_accuracy']}%",
                     "data": event["data"],
+                    "current_telemetry": {
+                        "epoch": ep,
+                        "epochs_total": epochs,
+                        "train_loss": event["data"]["train_loss"],
+                        "train_accuracy": event["data"]["train_accuracy"],
+                        "val_loss": event["data"]["val_loss"],
+                        "val_accuracy": event["data"]["val_accuracy"],
+                        "elapsed_seconds": event.get("elapsed_seconds", 0.0),
+                        "last_completed_epoch": ep,
+                        "status": "RUNNING",
+                        "checkpoint_status": "in_progress",
+                    },
                 })
 
-        train_result = trainer.train(
-            train_dataset=train_pool_ds,
-            val_dataset=val_ds,
-            epochs=epochs,
-            batch_size=batch_size,
-            progress_callback=on_epoch,
-        )
+        try:
+            train_result = trainer.train(
+                train_dataset=train_pool_ds,
+                val_dataset=val_ds,
+                epochs=epochs,
+                batch_size=batch_size,
+                progress_callback=on_epoch,
+                cancel_check=cancel_check,
+                batch_callback=on_batch,
+            )
 
-        # Test evaluation
-        if step_callback:
-            step_callback({
-                "progress": 95.0,
-                "current_step": "Evaluating on Test Set",
-                "log": "Evaluating original model on independent test set...",
-            })
-        test_eval = trainer.evaluate(test_ds, batch_size=batch_size)
-        train_result["final_test_loss"] = test_eval["loss"]
-        train_result["final_test_accuracy"] = test_eval["accuracy"]
+            # Cancellation check before test evaluation
+            if cancel_check and cancel_check():
+                raise CancellationError("Cancelled before final test evaluation")
 
-        # Save checkpoint
-        checkpoint_path = os.path.join(self.checkpoints_dir, exp_id, "original.pt")
-        trainer.save_checkpoint(checkpoint_path, metadata=train_result)
+            # Test evaluation
+            if step_callback:
+                step_callback({
+                    "progress": 95.0,
+                    "current_step": "Evaluating on Test Set",
+                    "log": "Evaluating original model on independent test set...",
+                })
+            test_eval = trainer.evaluate(test_ds, batch_size=batch_size)
+            train_result["final_test_loss"] = test_eval["loss"]
+            train_result["final_test_accuracy"] = test_eval["accuracy"]
+            train_result["model_type"] = "original"
+            train_result["dataset_name"] = exp.get("dataset_name", "tofu")
+            train_result["experiment_id"] = exp_id
 
-        # Update experiment in DB with initial telemetry metrics
-        existing_metrics = exp.get("metrics") or {}
-        existing_metrics["original_model"] = {
-            "history": train_result.get("history", []),
-            "test": {
-                "loss": train_result.get("final_test_loss"),
-                "accuracy": train_result.get("final_test_accuracy"),
-            },
-            "training_time_seconds": train_result.get("training_time_seconds", 0.0),
-            "num_parameters": train_result.get("num_parameters"),
-            "device": train_result.get("device"),
-        }
+            # Save checkpoint atomically with completeness verification
+            trainer.save_checkpoint(
+                checkpoint_path,
+                metadata=train_result,
+                is_complete=True,
+                checkpoint_status="complete",
+            )
 
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("""
-            UPDATE experiments
-            SET status = 'ORIGINAL_TRAINED',
-                original_checkpoint_path = ?,
-                train_config = ?,
-                metrics = ?,
-                updated_at = ?
-            WHERE id = ?
-        """, (
-            checkpoint_path,
-            json.dumps(config),
-            json.dumps(existing_metrics),
-            datetime.datetime.utcnow().isoformat(),
-            exp_id,
-        ))
-        conn.commit()
-        conn.close()
+            # Update experiment in DB with initial telemetry metrics
+            existing_metrics = exp.get("metrics") or {}
+            existing_metrics["original_model"] = {
+                "history": train_result.get("history", []),
+                "test": {
+                    "loss": train_result.get("final_test_loss"),
+                    "accuracy": train_result.get("final_test_accuracy"),
+                },
+                "training_time_seconds": train_result.get("training_time_seconds", 0.0),
+                "num_parameters": train_result.get("num_parameters"),
+                "device": train_result.get("device"),
+            }
 
-        logger.info(f"Original model trained for {exp_id}. Test accuracy: {test_eval['accuracy']}%. Checkpoint: {checkpoint_path}")
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("""
+                UPDATE experiments
+                SET status = 'ORIGINAL_TRAINED',
+                    original_checkpoint_path = ?,
+                    train_config = ?,
+                    metrics = ?,
+                    updated_at = ?
+                WHERE id = ?
+            """, (
+                checkpoint_path,
+                json.dumps(config),
+                json.dumps(existing_metrics),
+                datetime.datetime.utcnow().isoformat(),
+                exp_id,
+            ))
+            conn.commit()
+            conn.close()
 
-        return train_result
+            if step_callback:
+                step_callback({
+                    "progress": 100.0,
+                    "current_step": "Complete",
+                    "checkpoint_status": "saved",
+                    "log": f"Original model trained and checkpointed. Test accuracy: {test_eval['accuracy']}%.",
+                })
+
+            logger.info(f"Original model trained for {exp_id}. Test accuracy: {test_eval['accuracy']}%. Checkpoint: {checkpoint_path}")
+            return train_result
+        except CancellationError as ce:
+            logger.info(f"Original model training cancelled for {exp_id}. Cleaning temporary staging.")
+            tmp_path = f"{checkpoint_path}.tmp"
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+            raise ce
 
     # -------------------------------------------------------------
     # STAGE B: Forgetting Request & Partitioning
@@ -334,6 +444,14 @@ class ExperimentService:
             num_groups=num_groups,
         )
 
+        # Compute deterministic partition hash for reproducible integrity tracking
+        retain_set = sorted(list(partitioner.retain_indices))
+        forget_set = sorted(list(partitioner.forget_indices))
+        hash_digest = hashlib.sha256(f"{retain_set}:{forget_set}".encode("utf-8")).hexdigest()[:16]
+        manifest["partition_hash"] = f"part_{hash_digest}"
+        manifest["dataset_version"] = "1.0-clean"
+        manifest["created_at"] = datetime.datetime.utcnow().isoformat()
+
         conn = get_db_connection()
         c = conn.cursor()
         c.execute("""
@@ -350,6 +468,7 @@ class ExperimentService:
         conn.commit()
         conn.close()
 
+        logger.info(f"Forgetting partition created for {exp_id}. Hash: {manifest['partition_hash']}. Retain: {manifest['retain_count']}, Forget: {manifest['forget_count']}")
         return manifest
 
     # -------------------------------------------------------------
@@ -360,6 +479,7 @@ class ExperimentService:
         exp_id: str,
         config_override: Optional[Dict[str, Any]] = None,
         step_callback: Optional[Any] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         exp = self.get_experiment(exp_id)
         if not exp:
@@ -373,6 +493,13 @@ class ExperimentService:
         config = exp.get("train_config") or {}
         if config_override:
             config.update(config_override)
+            if "subsample_size" in config_override:
+                self._partitioners.pop(exp_id, None)
+                conn = get_db_connection()
+                c = conn.cursor()
+                c.execute("UPDATE experiments SET train_config = ? WHERE id = ?", (json.dumps(config), exp_id))
+                conn.commit()
+                conn.close()
 
         partitioner = self._get_or_create_partitioner(exp_id)
         retain_ds, _, val_ds = partitioner.get_subsets()
@@ -391,6 +518,29 @@ class ExperimentService:
 
         epochs = config.get("epochs", 5)
         batch_size = config.get("batch_size", 64)
+        checkpoint_path = os.path.join(self.checkpoints_dir, exp_id, "retrained.pt")
+
+        def on_batch(event):
+            if step_callback:
+                ep = event["epoch"]
+                b = event["batch"]
+                total_b = event["batches_total"]
+                prog = ((ep - 1) / epochs + (b / total_b) / epochs) * 90.0
+                step_callback({
+                    "progress": prog,
+                    "current_step": f"Exact Retraining - Epoch {ep}/{epochs} - Batch {b}/{total_b}",
+                    "current_telemetry": {
+                        "epoch": ep,
+                        "epochs_total": epochs,
+                        "batch": b,
+                        "batches_total": total_b,
+                        "train_loss": event["train_loss"],
+                        "train_accuracy": event["train_accuracy"],
+                        "elapsed_seconds": event["elapsed_seconds"],
+                        "status": "RUNNING",
+                        "checkpoint_status": "in_progress",
+                    },
+                })
 
         def on_epoch(event):
             if step_callback:
@@ -401,64 +551,106 @@ class ExperimentService:
                     "current_step": f"Exact Retraining Epoch {ep}/{epochs}",
                     "log": f"Retrained Reference - Epoch {ep}/{epochs} - Retain Loss: {event['data']['train_loss']} - Retain Acc: {event['data']['train_accuracy']}%",
                     "data": event["data"],
+                    "current_telemetry": {
+                        "epoch": ep,
+                        "epochs_total": epochs,
+                        "train_loss": event["data"]["train_loss"],
+                        "train_accuracy": event["data"]["train_accuracy"],
+                        "val_loss": event["data"]["val_loss"],
+                        "val_accuracy": event["data"]["val_accuracy"],
+                        "elapsed_seconds": event.get("elapsed_seconds", 0.0),
+                        "last_completed_epoch": ep,
+                        "status": "RUNNING",
+                        "checkpoint_status": "in_progress",
+                    },
                 })
 
-        train_result = trainer.train(
-            train_dataset=retain_ds,
-            val_dataset=val_ds,
-            epochs=epochs,
-            batch_size=batch_size,
-            progress_callback=on_epoch,
-        )
+        try:
+            train_result = trainer.train(
+                train_dataset=retain_ds,
+                val_dataset=val_ds,
+                epochs=epochs,
+                batch_size=batch_size,
+                progress_callback=on_epoch,
+                cancel_check=cancel_check,
+                batch_callback=on_batch,
+            )
 
-        if step_callback:
-            step_callback({
-                "progress": 95.0,
-                "current_step": "Evaluating Retrained Model on Test Set",
-                "log": "Evaluating exact retrained reference on test set...",
-            })
-        test_eval = trainer.evaluate(test_ds, batch_size=batch_size)
-        train_result["final_test_loss"] = test_eval["loss"]
-        train_result["final_test_accuracy"] = test_eval["accuracy"]
+            if cancel_check and cancel_check():
+                raise CancellationError("Cancelled before retrained test evaluation")
 
-        checkpoint_path = os.path.join(self.checkpoints_dir, exp_id, "retrained.pt")
-        trainer.save_checkpoint(checkpoint_path, metadata=train_result)
+            if step_callback:
+                step_callback({
+                    "progress": 95.0,
+                    "current_step": "Evaluating Retrained Model on Test Set",
+                    "log": "Evaluating exact retrained reference on test set...",
+                })
+            test_eval = trainer.evaluate(test_ds, batch_size=batch_size)
+            train_result["final_test_loss"] = test_eval["loss"]
+            train_result["final_test_accuracy"] = test_eval["accuracy"]
+            train_result["model_type"] = "retrained"
+            train_result["dataset_name"] = exp.get("dataset_name", "tofu")
+            train_result["experiment_id"] = exp_id
 
-        existing_metrics = exp.get("metrics") or {}
-        existing_metrics["retrained_model"] = {
-            "history": train_result.get("history", []),
-            "test": {
-                "loss": train_result.get("final_test_loss"),
-                "accuracy": train_result.get("final_test_accuracy"),
-            },
-            "retraining_time_seconds": train_result.get("training_time_seconds", 0.0),
-            "num_parameters": train_result.get("num_parameters"),
-        }
+            # Save checkpoint atomically with completeness flag
+            trainer.save_checkpoint(
+                checkpoint_path,
+                metadata=train_result,
+                is_complete=True,
+                checkpoint_status="complete",
+            )
 
-        next_status = "READY_FOR_EVALUATION" if exp.get("unlearned_checkpoint_path") else "RETRAINED"
+            existing_metrics = exp.get("metrics") or {}
+            existing_metrics["retrained_model"] = {
+                "history": train_result.get("history", []),
+                "test": {
+                    "loss": train_result.get("final_test_loss"),
+                    "accuracy": train_result.get("final_test_accuracy"),
+                },
+                "retraining_time_seconds": train_result.get("training_time_seconds", 0.0),
+                "num_parameters": train_result.get("num_parameters"),
+            }
 
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("""
-            UPDATE experiments
-            SET retrained_checkpoint_path = ?,
-                metrics = ?,
-                status = ?,
-                updated_at = ?
-            WHERE id = ?
-        """, (
-            checkpoint_path,
-            json.dumps(existing_metrics),
-            next_status,
-            datetime.datetime.utcnow().isoformat(),
-            exp_id,
-        ))
-        conn.commit()
-        conn.close()
+            next_status = "READY_FOR_EVALUATION" if exp.get("unlearned_checkpoint_path") else "RETRAINED"
 
-        logger.info(f"Retrained reference trained for {exp_id}. Test accuracy: {test_eval['accuracy']}%. Status: {next_status}")
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("""
+                UPDATE experiments
+                SET retrained_checkpoint_path = ?,
+                    metrics = ?,
+                    status = ?,
+                    updated_at = ?
+                WHERE id = ?
+            """, (
+                checkpoint_path,
+                json.dumps(existing_metrics),
+                next_status,
+                datetime.datetime.utcnow().isoformat(),
+                exp_id,
+            ))
+            conn.commit()
+            conn.close()
 
-        return train_result
+            if step_callback:
+                step_callback({
+                    "progress": 100.0,
+                    "current_step": "Complete",
+                    "checkpoint_status": "saved",
+                    "log": f"Retrained baseline trained and checkpointed. Test accuracy: {test_eval['accuracy']}%.",
+                })
+
+            logger.info(f"Retrained reference trained for {exp_id}. Test accuracy: {test_eval['accuracy']}%. Status: {next_status}")
+            return train_result
+        except CancellationError as ce:
+            logger.info(f"Retraining cancelled for {exp_id}. Cleaning temporary staging.")
+            tmp_path = f"{checkpoint_path}.tmp"
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+            raise ce
 
     # -------------------------------------------------------------
     # STAGE D: Machine Unlearning
@@ -474,6 +666,7 @@ class ExperimentService:
         beta_proximity: float = 0.01,
         max_forget_loss: float = 2.35,
         step_callback: Optional[Any] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> Dict[str, Any]:
         exp = self.get_experiment(exp_id)
         if not exp:
@@ -490,6 +683,9 @@ class ExperimentService:
         device = get_device()
         base_model = get_model(exp["model_name"])
         checkpoint = torch.load(orig_ckpt, map_location=device, weights_only=False)
+        orig_ckpt_meta = checkpoint.get("metadata", {})
+        if orig_ckpt_meta.get("model_type") == "unlearned":
+            raise ValueError(f"Integrity violation: Attempted to load an unlearned checkpoint ({orig_ckpt}) as original model baseline.")
         base_model.load_state_dict(checkpoint["model_state_dict"])
 
         unlearn_config = {
@@ -502,6 +698,30 @@ class ExperimentService:
             "max_forget_loss": max_forget_loss,
         }
 
+        checkpoint_path = os.path.join(self.checkpoints_dir, exp_id, "unlearned.pt")
+
+        def on_batch(event):
+            if step_callback:
+                ep = event["epoch"]
+                b = event["batch"]
+                total_b = event["batches_total"]
+                prog = ((ep - 1) / epochs + (b / total_b) / epochs) * 90.0
+                step_callback({
+                    "progress": prog,
+                    "current_step": f"Unlearning ({algorithm}) - Epoch {ep}/{epochs} - Batch {b}/{total_b}",
+                    "current_telemetry": {
+                        "epoch": ep,
+                        "epochs_total": epochs,
+                        "batch": b,
+                        "batches_total": total_b,
+                        "train_loss": event.get("train_loss"),
+                        "train_accuracy": event.get("train_accuracy"),
+                        "elapsed_seconds": event.get("elapsed_seconds", 0.0),
+                        "status": "RUNNING",
+                        "checkpoint_status": "in_progress",
+                    },
+                })
+
         def on_epoch(event):
             if step_callback:
                 ep = event["epoch"]
@@ -511,84 +731,129 @@ class ExperimentService:
                     "current_step": f"Unlearning Epoch {ep}/{epochs} ({algorithm})",
                     "log": f"Unlearning - Epoch {ep}/{epochs} - Retain Acc: {event['data']['retain_accuracy']}%",
                     "data": event["data"],
+                    "current_telemetry": {
+                        "epoch": ep,
+                        "epochs_total": epochs,
+                        "retain_accuracy": event["data"]["retain_accuracy"],
+                        "retain_loss": event["data"].get("retain_loss"),
+                        "elapsed_seconds": event.get("elapsed_seconds", 0.0),
+                        "last_completed_epoch": ep,
+                        "status": "RUNNING",
+                        "checkpoint_status": "in_progress",
+                    },
                 })
 
-        if algorithm == "gradient_ascent":
-            unlearner = RegularizedGradientAscentUnlearner(
-                base_model=base_model,
-                learning_rate=learning_rate,
-                alpha_ascent=alpha_ascent,
-                beta_proximity=beta_proximity,
-                max_forget_loss=max_forget_loss,
-                device=device,
+        try:
+            if algorithm == "gradient_ascent":
+                unlearner = RegularizedGradientAscentUnlearner(
+                    base_model=base_model,
+                    learning_rate=learning_rate,
+                    alpha_ascent=alpha_ascent,
+                    beta_proximity=beta_proximity,
+                    max_forget_loss=max_forget_loss,
+                    device=device,
+                )
+                unlearn_result = unlearner.unlearn(
+                    retain_dataset=retain_ds,
+                    forget_dataset=forget_ds,
+                    val_dataset=val_ds,
+                    epochs=epochs,
+                    batch_size=batch_size,
+                    progress_callback=on_epoch,
+                    cancel_check=cancel_check,
+                    batch_callback=on_batch,
+                )
+                final_model = unlearner.model
+            else:
+                # Retain-set fine-tuning
+                unlearner = RetainFineTuningUnlearner(
+                    base_model=base_model,
+                    learning_rate=learning_rate,
+                    device=device,
+                )
+                unlearn_result = unlearner.unlearn(
+                    retain_dataset=retain_ds,
+                    val_dataset=val_ds,
+                    forget_dataset=forget_ds,
+                    epochs=epochs,
+                    batch_size=batch_size,
+                    progress_callback=on_epoch,
+                    cancel_check=cancel_check,
+                    batch_callback=on_batch,
+                )
+                final_model = unlearner.model
+
+            if cancel_check and cancel_check():
+                raise CancellationError("Cancelled before saving unlearned checkpoint")
+
+            # Save checkpoint atomically with completeness metadata
+            os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
+            temp_path = f"{checkpoint_path}.tmp"
+            unlearn_result["model_type"] = "unlearned"
+            unlearn_result["dataset_name"] = exp.get("dataset_name", "tofu")
+            unlearn_result["experiment_id"] = exp_id
+            unlearn_result["is_complete"] = True
+            unlearn_result["checkpoint_status"] = "complete"
+            unlearn_result["saved_at"] = datetime.datetime.utcnow().isoformat()
+            torch.save(
+                {
+                    "model_state_dict": final_model.state_dict(),
+                    "metadata": unlearn_result,
+                    "config": unlearn_config,
+                },
+                temp_path,
             )
-            unlearn_result = unlearner.unlearn(
-                retain_dataset=retain_ds,
-                forget_dataset=forget_ds,
-                val_dataset=val_ds,
-                epochs=epochs,
-                batch_size=batch_size,
-                progress_callback=on_epoch,
-            )
-            final_model = unlearner.model
-        else:
-            # Retain-set fine-tuning
-            unlearner = RetainFineTuningUnlearner(
-                base_model=base_model,
-                learning_rate=learning_rate,
-                device=device,
-            )
-            unlearn_result = unlearner.unlearn(
-                retain_dataset=retain_ds,
-                val_dataset=val_ds,
-                forget_dataset=forget_ds,
-                epochs=epochs,
-                batch_size=batch_size,
-                progress_callback=on_epoch,
-            )
-            final_model = unlearner.model
+            os.replace(temp_path, checkpoint_path)
+            logger.info(f"Atomically promoted unlearned checkpoint: {checkpoint_path}")
 
-        checkpoint_path = os.path.join(self.checkpoints_dir, exp_id, "unlearned.pt")
-        os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
-        torch.save(
-            {
-                "model_state_dict": final_model.state_dict(),
-                "metadata": unlearn_result,
-                "config": unlearn_config,
-            },
-            checkpoint_path,
-        )
+            existing_metrics = exp.get("metrics") or {}
+            existing_metrics["unlearned_model"] = {
+                "history": unlearn_result.get("history", []),
+                "unlearning_time_seconds": unlearn_result.get("unlearning_time_seconds", 0.0),
+            }
 
-        existing_metrics = exp.get("metrics") or {}
-        existing_metrics["unlearned_model"] = {
-            "history": unlearn_result.get("history", []),
-            "unlearning_time_seconds": unlearn_result.get("unlearning_time_seconds", 0.0),
-        }
+            next_status = "READY_FOR_EVALUATION" if exp.get("retrained_checkpoint_path") else "UNLEARNED"
 
-        next_status = "READY_FOR_EVALUATION" if exp.get("retrained_checkpoint_path") else "UNLEARNED"
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("""
+                UPDATE experiments
+                SET unlearned_checkpoint_path = ?,
+                    unlearn_config = ?,
+                    metrics = ?,
+                    status = ?,
+                    updated_at = ?
+                WHERE id = ?
+            """, (
+                checkpoint_path,
+                json.dumps(unlearn_config),
+                json.dumps(existing_metrics),
+                next_status,
+                datetime.datetime.utcnow().isoformat(),
+                exp_id,
+            ))
+            conn.commit()
+            conn.close()
 
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("""
-            UPDATE experiments
-            SET unlearned_checkpoint_path = ?,
-                unlearn_config = ?,
-                metrics = ?,
-                status = ?,
-                updated_at = ?
-            WHERE id = ?
-        """, (
-            checkpoint_path,
-            json.dumps(unlearn_config),
-            json.dumps(existing_metrics),
-            next_status,
-            datetime.datetime.utcnow().isoformat(),
-            exp_id,
-        ))
-        conn.commit()
-        conn.close()
+            if step_callback:
+                step_callback({
+                    "progress": 100.0,
+                    "current_step": "Complete",
+                    "checkpoint_status": "saved",
+                    "log": f"Unlearning complete and checkpointed ({algorithm}).",
+                })
 
-        logger.info(f"Unlearning finished for {exp_id} ({algorithm}). Status: {next_status}")
+            logger.info(f"Unlearning finished for {exp_id} ({algorithm}). Status: {next_status}")
+            return unlearn_result
+        except CancellationError as ce:
+            logger.info(f"Unlearning cancelled for {exp_id}. Cleaning temporary staging.")
+            tmp_path = f"{checkpoint_path}.tmp"
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+            raise ce
 
         return unlearn_result
 
@@ -631,11 +896,25 @@ class ExperimentService:
 
         retrain_model = None
         retrain_meta = {}
+        retrain_ckpt = None
         if retrain_ckpt_path and os.path.exists(retrain_ckpt_path):
             retrain_model = get_model(exp["model_name"]).to(device)
             retrain_ckpt = torch.load(retrain_ckpt_path, map_location=device, weights_only=False)
             retrain_model.load_state_dict(retrain_ckpt["model_state_dict"])
             retrain_meta = retrain_ckpt.get("metadata", {})
+
+        # Strict validation: prevent interrupted or partial checkpoints from being evaluated
+        for name, ckpt_obj, path in [
+            ("Original", orig_ckpt, orig_ckpt_path),
+            ("Unlearned", unlearn_ckpt, unlearn_ckpt_path),
+            ("Retrained", retrain_ckpt, retrain_ckpt_path),
+        ]:
+            if ckpt_obj is not None:
+                meta = ckpt_obj.get("metadata", {})
+                if meta.get("is_complete") is False or meta.get("checkpoint_status") in ["partial", "cancelled", "failed"]:
+                    raise ValueError(f"{name} checkpoint at {path} is incomplete or cancelled ({meta.get('checkpoint_status')}). Cannot evaluate non-terminal model.")
+                if name == "Original" and meta.get("model_type") == "unlearned":
+                    raise ValueError(f"Integrity violation: {path} is an unlearned checkpoint, not an original model baseline.")
 
         # 1. Evaluate Original Model
         if step_callback:
@@ -739,6 +1018,14 @@ class ExperimentService:
                 "original": mia_original,
                 "unlearned": mia_unlearned,
                 "retrained": mia_retrained,
+            },
+            "provenance": {
+                "experiment_id": exp_id,
+                "dataset_name": exp["dataset_name"],
+                "dataset_version": (exp.get("partition_manifest") or {}).get("dataset_version", "1.0-clean"),
+                "partition_hash": (exp.get("partition_manifest") or {}).get("partition_hash"),
+                "seed": exp["seed"],
+                "evaluated_at": datetime.datetime.utcnow().isoformat(),
             },
             "classes": classes,
         }

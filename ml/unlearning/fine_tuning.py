@@ -1,5 +1,6 @@
 import copy
 import time
+import logging
 from typing import Callable, Dict, Optional, Any, List
 import psutil
 import torch
@@ -7,6 +8,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 from ..utils.hardware import get_device, get_hardware_info
 from ..training.trainer import ModelTrainer
+from ..utils.exceptions import CancellationError
+
+logger = logging.getLogger("unlearning.fine_tuning")
 
 
 class RetainFineTuningUnlearner:
@@ -46,9 +50,11 @@ class RetainFineTuningUnlearner:
         epochs: int = 3,
         batch_size: int = 64,
         progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+        batch_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
         """
-        Executes unlearning by fine-tuning on retain samples only.
+        Executes unlearning by fine-tuning on retain samples only, with batch-level cancellation checks.
         """
         retain_loader = DataLoader(
             retain_dataset,
@@ -61,6 +67,7 @@ class RetainFineTuningUnlearner:
         start_time = time.time()
         process = psutil.Process()
         peak_ram_mb = 0.0
+        total_batches = len(retain_loader)
 
         for epoch in range(1, epochs + 1):
             epoch_start = time.time()
@@ -69,7 +76,11 @@ class RetainFineTuningUnlearner:
             correct = 0
             total = 0
 
-            for batch_data in retain_loader:
+            for batch_idx, batch_data in enumerate(retain_loader):
+                if cancel_check and cancel_check():
+                    logger.info(f"Cancellation detected during retain fine-tuning at epoch {epoch}, batch {batch_idx + 1}/{total_batches}. Halting.")
+                    raise CancellationError(f"Retain fine-tuning cancelled by user at epoch {epoch}, batch {batch_idx + 1}/{total_batches}")
+
                 if len(batch_data) == 3:
                     _, inputs, labels = batch_data
                 else:
@@ -89,8 +100,25 @@ class RetainFineTuningUnlearner:
                 total += labels.size(0)
                 correct += predicted.eq(labels).sum().item()
 
+                if batch_callback and (batch_idx % max(1, total_batches // 5) == 0 or batch_idx == total_batches - 1):
+                    batch_callback({
+                        "type": "batch_progress",
+                        "epoch": epoch,
+                        "epochs_total": epochs,
+                        "batch": batch_idx + 1,
+                        "batches_total": total_batches,
+                        "train_loss": round(loss.item(), 4),
+                        "train_accuracy": round((correct / max(1, total)) * 100.0, 2),
+                        "elapsed_seconds": round(time.time() - start_time, 2),
+                    })
+
             retain_loss = running_loss / max(1, total)
             retain_acc = (correct / max(1, total)) * 100.0
+
+            # Safe boundary cancellation check before validation / forget evaluation
+            if cancel_check and cancel_check():
+                logger.info(f"Cancellation detected during retain fine-tuning at epoch {epoch} boundary. Halting.")
+                raise CancellationError(f"Retain fine-tuning cancelled by user at end of epoch {epoch}")
 
             # Monitor validation & forget accuracy if provided
             val_acc = None

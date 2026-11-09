@@ -17,6 +17,7 @@ TOFU Dataset Breakdown:
 
 import io
 import os
+import json
 import base64
 from typing import Tuple, List, Dict, Any, Optional
 import numpy as np
@@ -163,9 +164,22 @@ def load_tofu_raw_dataset(
 
     os.makedirs(data_dir, exist_ok=True)
 
-    # Load official TOFU dataset ('full' configuration has 4,000 QA pairs across 200 fictitious authors)
-    tofu_hf = load_dataset("locuslab/TOFU", "full")["train"]
-    raw_records = [{"question": x["question"], "answer": x["answer"]} for x in tofu_hf]
+    # Load official TOFU dataset: prefer bundled local cache, fallback to HuggingFace
+    local_qa_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/tofu_dataset/tofu_qa_pairs.jsonl"))
+    if not os.path.exists(local_qa_path):
+        local_qa_path = os.path.abspath("./data/tofu_dataset/tofu_qa_pairs.jsonl")
+
+    raw_records = []
+    if os.path.exists(local_qa_path):
+        with open(local_qa_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    item = json.loads(line)
+                    raw_records.append({"question": item["question"], "answer": item["answer"]})
+    else:
+        tofu_hf = load_dataset("locuslab/TOFU", "full")["train"]
+        raw_records = [{"question": x["question"], "answer": x["answer"]} for x in tofu_hf]
 
     texts = [f"{x['question']} {x['answer']}" for x in raw_records]
     targets = [(i // 20) % 10 for i in range(len(raw_records))]

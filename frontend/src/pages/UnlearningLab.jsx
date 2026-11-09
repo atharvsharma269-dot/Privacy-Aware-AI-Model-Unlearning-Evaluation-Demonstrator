@@ -10,10 +10,12 @@ import {
   ShieldCheck,
   Flame,
   Zap,
+  StopCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import { api } from '../services/api';
 
-export default function UnlearningLab({ activeExperiment, onExperimentUpdated, onStartJob, onNavigate }) {
+export default function UnlearningLab({ activeExperiment, activeJob, onExperimentUpdated, onStartJob, onCancelJob, onNavigate }) {
   const [algorithm, setAlgorithm] = useState('gradient_ascent');
   const [unlearnEpochs, setUnlearnEpochs] = useState(3);
   const [learningRate, setLearningRate] = useState(0.0001);
@@ -24,6 +26,8 @@ export default function UnlearningLab({ activeExperiment, onExperimentUpdated, o
   const [retrainEpochs, setRetrainEpochs] = useState(5);
   const [isSubmittingUnlearn, setIsSubmittingUnlearn] = useState(false);
   const [isSubmittingRetrain, setIsSubmittingRetrain] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [showConfirmCancel, setShowConfirmCancel] = useState(false);
   const [error, setError] = useState(null);
 
   const hasOriginal = Boolean(activeExperiment?.original_checkpoint_path);
@@ -76,6 +80,31 @@ export default function UnlearningLab({ activeExperiment, onExperimentUpdated, o
     }
   };
 
+  const isRelevantJob = activeJob &&
+    activeJob.experiment_id === activeExperiment?.id &&
+    (activeJob.job_type.startsWith('UNLEARN') || activeJob.job_type === 'EXACT_RETRAIN');
+  const isJobRunning = isRelevantJob && (activeJob.status === 'RUNNING' || activeJob.status === 'QUEUED');
+  const isCancellationRequested = isRelevantJob && activeJob.status === 'CANCELLATION_REQUESTED';
+  const isCancelled = isRelevantJob && activeJob.status === 'CANCELLED';
+
+  const handleCancel = async () => {
+    if (!activeJob?.id) return;
+    setIsCancelling(true);
+    setError(null);
+    try {
+      if (onCancelJob) {
+        await onCancelJob(activeJob.id);
+      } else {
+        await api.cancelJob(activeJob.id);
+      }
+      setShowConfirmCancel(false);
+    } catch (err) {
+      setError(err.message || 'Failed to cancel active job');
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-10">
       {/* Header */}
@@ -95,6 +124,29 @@ export default function UnlearningLab({ activeExperiment, onExperimentUpdated, o
 
         {/* Readiness Pill */}
         <div className="flex items-center space-x-2">
+          {isJobRunning && (
+            <div className="flex items-center space-x-2">
+              <span className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-950 text-xs font-mono font-bold animate-pulse">
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                <span>{activeJob.job_type} ({Math.round(activeJob.progress || 0)}%)</span>
+              </span>
+              <button
+                onClick={() => setShowConfirmCancel(true)}
+                disabled={isCancelling || isCancellationRequested}
+                className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-mono font-bold uppercase transition flex items-center space-x-1 border border-black shadow-sm"
+              >
+                <StopCircle className="h-3.5 w-3.5" />
+                <span>{isCancellationRequested ? 'Halting...' : 'Cancel'}</span>
+              </button>
+            </div>
+          )}
+
+          {!isJobRunning && isCancelled && (
+            <span className="px-3 py-1.5 rounded-xl bg-neutral-200 border border-neutral-400 text-neutral-800 text-xs font-mono font-bold">
+              JOB CANCELLED
+            </span>
+          )}
+
           {!hasOriginal && (
             <span className="px-3.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold font-mono">
               Needs Original Model Checkpoint
@@ -105,7 +157,7 @@ export default function UnlearningLab({ activeExperiment, onExperimentUpdated, o
               Needs Deletion Partition
             </span>
           )}
-          {hasOriginal && hasPartition && (
+          {hasOriginal && hasPartition && !isJobRunning && (
             <span className="px-4 py-2 rounded-xl bg-teal-100 border border-teal-300 text-teal-950 text-xs flex items-center space-x-1.5 font-bold shadow-sm font-mono">
               <CheckCircle2 className="h-4 w-4 text-teal-800" />
               <span>PIPELINE READY</span>
@@ -113,6 +165,38 @@ export default function UnlearningLab({ activeExperiment, onExperimentUpdated, o
           )}
         </div>
       </div>
+
+      {/* Confirmation Modal Banner */}
+      {showConfirmCancel && (
+        <div className="p-5 rounded-2xl bg-amber-50 border-2 border-amber-400 text-amber-950 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 font-mono text-xs">
+          <div className="flex items-center space-x-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+            <div>
+              <p className="font-bold uppercase">Confirm Operation Interruption</p>
+              <p className="text-[11px] text-amber-900 mt-0.5 font-sans">
+                The active computation ({activeJob.job_type}) will halt safely at the next batch boundary. Partial weights in temporary staging will be cleaned up automatically.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 shrink-0">
+            <button
+              onClick={() => setShowConfirmCancel(false)}
+              disabled={isCancelling}
+              className="px-3.5 py-1.5 rounded-lg bg-neutral-200 hover:bg-neutral-300 text-black font-bold uppercase"
+            >
+              Continue Job
+            </button>
+            <button
+              onClick={handleCancel}
+              disabled={isCancelling}
+              className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold uppercase flex items-center space-x-1"
+            >
+              {isCancelling ? <RefreshCw className="h-3 w-3 animate-spin" /> : <StopCircle className="h-3 w-3" />}
+              <span>{isCancelling ? 'Halting...' : 'Yes, Stop Job'}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center space-x-2 font-medium">

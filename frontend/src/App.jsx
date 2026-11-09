@@ -6,12 +6,20 @@ import ErrorBoundary from './components/ErrorBoundary';
 
 import Overview from './pages/Overview';
 import LiveUnlearningDemo from './pages/LiveUnlearningDemo';
+import PrivacyAIChat from './pages/PrivacyAIChat';
 import DatasetExplorer from './pages/DatasetExplorer';
 import ModelTraining from './pages/ModelTraining';
 import ForgettingRequest from './pages/ForgettingRequest';
+import ProvenanceGraph from './pages/ProvenanceGraph';
+import ImpactAnalysis from './pages/ImpactAnalysis';
 import UnlearningLab from './pages/UnlearningLab';
+import BenchmarkArena from './pages/BenchmarkArena';
 import EvaluationDashboard from './pages/EvaluationDashboard';
+import PrivacyRedTeam from './pages/PrivacyRedTeam';
 import ExperimentHistory from './pages/ExperimentHistory';
+import AuditHistory from './pages/AuditHistory';
+import ResearchReports from './pages/ResearchReports';
+import SystemSettings from './pages/SystemSettings';
 import ResearchInsights from './pages/ResearchInsights';
 
 import { api } from './services/api';
@@ -42,8 +50,8 @@ export default function App() {
         const job = await api.getJob(activeJobId);
         setActiveJob(job);
 
-        // If job completed or failed
-        if (job.status === 'COMPLETED' || job.status === 'FAILED') {
+        // If job completed, failed, or cancelled
+        if (job.status === 'COMPLETED' || job.status === 'FAILED' || job.status === 'CANCELLED') {
           clearInterval(interval);
           // Refresh active experiment state
           if (job.experiment_id) {
@@ -58,6 +66,21 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, [activeJobId]);
+
+  const handleCancelJob = async (jobId) => {
+    try {
+      await api.cancelJob(jobId);
+      const updatedJob = await api.getJob(jobId);
+      setActiveJob(updatedJob);
+      if (updatedJob.experiment_id) {
+        const exp = await api.getExperiment(updatedJob.experiment_id);
+        setActiveExperiment(exp);
+      }
+    } catch (err) {
+      console.error('Failed to cancel job:', err);
+      throw err;
+    }
+  };
 
   const refreshAll = async () => {
     setIsRefreshing(true);
@@ -130,21 +153,12 @@ export default function App() {
               />
             )}
 
-            {currentTab === 'live-demo' && (
-              <LiveUnlearningDemo />
+            {(currentTab === 'chat' || currentTab === 'live-demo') && (
+              <PrivacyAIChat />
             )}
 
             {currentTab === 'dataset' && (
-              <DatasetExplorer selectedDataset={activeExperiment?.dataset_name || 'fashion_mnist'} />
-            )}
-
-            {currentTab === 'training' && (
-              <ModelTraining
-                activeExperiment={activeExperiment}
-                activeJob={activeJob}
-                onExperimentUpdated={handleExperimentUpdated}
-                onStartJob={handleStartJob}
-              />
+              <DatasetExplorer selectedDataset={activeExperiment?.dataset_name || 'tofu'} />
             )}
 
             {currentTab === 'forgetting' && (
@@ -155,21 +169,51 @@ export default function App() {
               />
             )}
 
+            {currentTab === 'provenance' && (
+              <ProvenanceGraph />
+            )}
+
+            {currentTab === 'impact' && (
+              <ImpactAnalysis onNavigate={setCurrentTab} />
+            )}
+
+            {currentTab === 'training' && (
+              <ModelTraining
+                activeExperiment={activeExperiment}
+                activeJob={activeJob}
+                onExperimentUpdated={handleExperimentUpdated}
+                onStartJob={handleStartJob}
+                onCancelJob={handleCancelJob}
+              />
+            )}
+
             {currentTab === 'unlearning' && (
               <UnlearningLab
                 activeExperiment={activeExperiment}
+                activeJob={activeJob}
                 onExperimentUpdated={handleExperimentUpdated}
                 onStartJob={handleStartJob}
+                onCancelJob={handleCancelJob}
                 onNavigate={setCurrentTab}
               />
+            )}
+
+            {currentTab === 'arena' && (
+              <BenchmarkArena />
             )}
 
             {currentTab === 'evaluation' && (
               <EvaluationDashboard
                 activeExperiment={activeExperiment}
+                activeJob={activeJob}
                 onExperimentUpdated={handleExperimentUpdated}
                 onStartJob={handleStartJob}
+                onCancelJob={handleCancelJob}
               />
+            )}
+
+            {currentTab === 'redteam' && (
+              <PrivacyRedTeam />
             )}
 
             {currentTab === 'history' && (
@@ -178,6 +222,18 @@ export default function App() {
                 onSelectExperiment={setActiveExperiment}
                 onNavigate={setCurrentTab}
               />
+            )}
+
+            {currentTab === 'audit' && (
+              <AuditHistory />
+            )}
+
+            {currentTab === 'reports' && (
+              <ResearchReports activeExperiment={activeExperiment} />
+            )}
+
+            {currentTab === 'settings' && (
+              <SystemSettings hardware={hardware} />
             )}
 
             {currentTab === 'insights' && (
@@ -192,6 +248,7 @@ export default function App() {
         <JobProgressModal
           job={activeJob}
           onClose={() => setShowJobModal(false)}
+          onCancel={handleCancelJob}
         />
       )}
     </div>

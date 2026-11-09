@@ -43,10 +43,20 @@ class DatasetPartitioner:
 
         # Cache targets for fast category filtering
         self._targets_cache: Dict[int, int] = {}
-        for idx in pool_indices:
-            # IndexedDataset returns (idx, img, target)
-            _, _, target = train_dataset[idx]
-            self._targets_cache[int(idx)] = int(target)
+        base = getattr(train_dataset, "base_dataset", train_dataset)
+        if hasattr(base, "targets"):
+            targets = base.targets
+            for idx in pool_indices:
+                self._targets_cache[int(idx)] = int(targets[idx])
+        elif hasattr(base, "labels"):
+            labels = base.labels
+            for idx in pool_indices:
+                self._targets_cache[int(idx)] = int(labels[idx])
+        else:
+            for idx in pool_indices:
+                # IndexedDataset returns (idx, img, target)
+                _, _, target = train_dataset[idx]
+                self._targets_cache[int(idx)] = int(target)
 
         # State for active forget/retain partition
         self.forget_indices: Set[int] = set()

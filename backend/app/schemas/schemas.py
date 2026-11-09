@@ -61,6 +61,8 @@ class ExperimentCreate(BaseModel):
     model_name: str = Field(default="mlp")
     seed: int = Field(default=42)
     train_config: Optional[TrainConfig] = None
+    knowledge_store_version: Optional[str] = Field(default="v1.0-clean", description="Dataset knowledge store version")
+    model_baseline: Optional[str] = Field(default="original", description="Model baseline type e.g. original")
 
 
 class JobResponse(BaseModel):

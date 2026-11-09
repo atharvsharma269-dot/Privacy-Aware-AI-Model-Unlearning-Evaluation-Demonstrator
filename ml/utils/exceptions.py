@@ -7,3 +7,4 @@ class CancellationError(Exception):
     def __init__(self, message: str = "Operation was cancelled by user request"):
         super().__init__(message)
         self.message = message
+

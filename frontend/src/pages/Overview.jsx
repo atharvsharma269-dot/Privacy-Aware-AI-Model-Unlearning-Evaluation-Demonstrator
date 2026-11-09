@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Database,
   Trophy,
+  BookOpen,
   GitCompare,
   Terminal,
 } from 'lucide-react';
@@ -41,7 +42,7 @@ export default function Overview({ onNavigate, activeExperiment }) {
                 CORE: PyTorch 2.x + FastAPI
               </div>
               <div className="text-neutral-700 text-[11px] mt-1">
-                BENCHMARKS: Fashion-MNIST / TOFU / Real F1 Facts
+                BENCHMARKS: Fashion-MNIST / LocusLab TOFU (200 Authors)
               </div>
             </div>
             <div className="pt-2 border-t border-neutral-300 text-[10px] text-neutral-500">
@@ -53,19 +54,29 @@ export default function Overview({ onNavigate, activeExperiment }) {
         {/* Action Buttons: Stark black boxes with hover invert and moving arrows */}
         <div className="flex flex-wrap gap-3 pt-3">
           <button
-            onClick={() => onNavigate('live-demo')}
+            onClick={() => onNavigate('chat')}
             className="group px-6 py-3.5 bg-black hover:bg-neutral-900 text-white font-mono text-xs font-bold uppercase tracking-wider border border-black shadow-brutal transition-all flex items-center space-x-2 active:translate-x-0.5 active:translate-y-0.5"
           >
-            <Trophy className="h-4 w-4 text-acid" />
-            <span>Launch Live F1 Demo</span>
+            <BookOpen className="h-4 w-4 text-acid" />
+            <span>Open Privacy AI Chat</span>
             <span className="group-hover:translate-x-1 transition-transform">&rarr;</span>
           </button>
 
           <button
-            onClick={() => onNavigate('training')}
+            onClick={() => onNavigate('arena')}
             className="group px-6 py-3.5 bg-white hover:bg-neutral-100 text-black font-mono text-xs font-bold uppercase tracking-wider border border-black shadow-brutal transition-all flex items-center space-x-2 active:translate-x-0.5 active:translate-y-0.5"
           >
-            <span>Train Neural Model</span>
+            <Trophy className="h-4 w-4 text-teal-800" />
+            <span>Benchmark Arena</span>
+            <span className="group-hover:translate-x-1 transition-transform">&rarr;</span>
+          </button>
+
+          <button
+            onClick={() => onNavigate('provenance')}
+            className="group px-6 py-3.5 bg-white hover:bg-neutral-100 text-black font-mono text-xs font-bold uppercase tracking-wider border border-black shadow-brutal transition-all flex items-center space-x-2 active:translate-x-0.5 active:translate-y-0.5"
+          >
+            <GitCompare className="h-4 w-4 text-black" />
+            <span>Provenance Graph</span>
             <span className="group-hover:translate-x-1 transition-transform">&rarr;</span>
           </button>
 

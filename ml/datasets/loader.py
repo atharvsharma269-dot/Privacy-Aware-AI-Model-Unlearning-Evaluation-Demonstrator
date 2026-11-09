@@ -91,19 +91,23 @@ def load_raw_dataset(
     ])
 
     if "fashion" in name:
+        raw_check = os.path.join(data_dir, "FashionMNIST", "raw", "train-images-idx3-ubyte")
+        effective_download = download if not os.path.exists(raw_check) else False
         train_ds = torchvision.datasets.FashionMNIST(
-            root=data_dir, train=True, download=download, transform=transform
+            root=data_dir, train=True, download=effective_download, transform=transform
         )
         test_ds = torchvision.datasets.FashionMNIST(
-            root=data_dir, train=False, download=download, transform=transform
+            root=data_dir, train=False, download=effective_download, transform=transform
         )
         classes = FASHION_MNIST_CLASSES
     else:
+        raw_check = os.path.join(data_dir, "MNIST", "raw", "train-images-idx3-ubyte")
+        effective_download = download if not os.path.exists(raw_check) else False
         train_ds = torchvision.datasets.MNIST(
-            root=data_dir, train=True, download=download, transform=transform
+            root=data_dir, train=True, download=effective_download, transform=transform
         )
         test_ds = torchvision.datasets.MNIST(
-            root=data_dir, train=False, download=download, transform=transform
+            root=data_dir, train=False, download=effective_download, transform=transform
         )
         classes = MNIST_CLASSES
 

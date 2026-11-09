@@ -1,0 +1,47 @@
+[
+  {
+    "test": "Test 1: Original Model Training Cancellation",
+    "status": "PASS",
+    "experiment_id": "exp_9ccf349e66",
+    "job_id": "job_7f2b8fe65ac3",
+    "final_status": "CANCELLED"
+  },
+  {
+    "test": "Test 2: Exact Retraining Cancellation",
+    "status": "PASS",
+    "experiment_id": "exp_313c3af62f",
+    "job_id": "job_cb00249de683",
+    "final_status": "CANCELLED"
+  },
+  {
+    "test": "Test 3: Approximate Unlearning Cancellation & Weight Preservation",
+    "status": "PASS",
+    "experiment_id": "exp_6ab19b8373",
+    "orig_sha256": "fcfa621c4dc6f3fc",
+    "final_unlearn_status": "CANCELLED"
+  },
+  {
+    "test": "Test 4: Training Successful Completion",
+    "status": "PASS",
+    "experiment_id": "exp_60b60fe9f6",
+    "job_id": "job_4ded0b67029e",
+    "checkpoint_path": "./checkpoints\\exp_60b60fe9f6\\original.pt",
+    "final_accuracy": 70.49
+  },
+  {
+    "test": "Test 5: Three-Model Evaluation",
+    "status": "PASS",
+    "experiment_id": "exp_00711dc58c",
+    "partition_hash": "part_19756ec3b91b54a3",
+    "speedup_factor": 1.39,
+    "orig_forget_acc": 88.89,
+    "unl_forget_acc": 86.11,
+    "ret_forget_acc": 88.89
+  },
+  {
+    "test": "Test 6: Failure & Conflict Handling",
+    "status": "PASS",
+    "conflict_http_code": 409,
+    "idempotent_cancel_status": "CANCELLED"
+  }
+]
