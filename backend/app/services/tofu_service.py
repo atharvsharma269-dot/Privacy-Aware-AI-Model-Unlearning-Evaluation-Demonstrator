@@ -1021,6 +1021,7 @@ class TOFUUnlearningService:
             is_qa_unlearned = is_fully_unlearned or (qa["qa_id"] in forgotten_qas)
             qa_copy["is_unlearned"] = is_qa_unlearned
             qa_copy["status"] = "UNLEARNED_REDACTED" if is_qa_unlearned else "ACTIVE_KNOWLEDGE"
+            qa_copy["active_status"] = "UNLEARNED" if is_qa_unlearned else "ACTIVE"
             if is_qa_unlearned:
                 qa_copy["answer"] = f"[REDACTED PURSUANT TO UNLEARNING] Information regarding '{qa.get('attribute', 'fact')}' for {author['author_name']} has been purged."
             processed_qas.append(qa_copy)
@@ -1548,11 +1549,12 @@ class TOFUUnlearningService:
             "timestamp": entry["timestamp"],
         }
 
-    def compute_forget_impact(self, scope_type: str, target_id: str, extra_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+    def compute_forget_impact(self, scope_type: str, target_id: str, extra_ids: Optional[List[str]] = None, experiment_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Calculates theoretical and experimental impact of a proposed forgetting operation
         before confirmation and destruction.
         """
+        exp_id = self.resolve_experiment_id(experiment_id)
         scope_upper = scope_type.upper()
         affected_authors = []
         matching_qas = []
