@@ -1,5 +1,6 @@
 import datetime
 import json
+import logging
 import os
 import uuid
 from typing import Dict, List, Optional, Any, Tuple
@@ -20,6 +21,8 @@ from ml.evaluation import (
 from ml.utils.seed import set_seed
 from ml.utils.hardware import get_device, get_hardware_info
 from ..database.db import get_db_connection
+
+logger = logging.getLogger("unlearning.experiments")
 
 
 class ExperimentService:
@@ -102,6 +105,31 @@ class ExperimentService:
         if not row:
             return None
 
+        raw_metrics = row["metrics"]
+        metrics = json.loads(raw_metrics) if raw_metrics else None
+
+        # Recovery fallback: If metrics or original history is missing but checkpoint exists, load telemetry metadata
+        orig_ckpt_path = row["original_checkpoint_path"]
+        if (metrics is None or "original_model" not in metrics or not metrics.get("original_model", {}).get("history")) and orig_ckpt_path and os.path.exists(orig_ckpt_path):
+            try:
+                ckpt = torch.load(orig_ckpt_path, map_location="cpu", weights_only=False)
+                meta = ckpt.get("metadata", {})
+                if meta and meta.get("history"):
+                    if metrics is None:
+                        metrics = {}
+                    if "original_model" not in metrics:
+                        metrics["original_model"] = {}
+                    metrics["original_model"]["history"] = meta.get("history", [])
+                    if "test" not in metrics["original_model"] and "final_test_accuracy" in meta:
+                        metrics["original_model"]["test"] = {
+                            "loss": meta.get("final_test_loss"),
+                            "accuracy": meta.get("final_test_accuracy"),
+                        }
+                    if "training_time_seconds" not in metrics["original_model"]:
+                        metrics["original_model"]["training_time_seconds"] = meta.get("training_time_seconds", 0.0)
+            except Exception as e:
+                logger.warning(f"Could not extract metadata from checkpoint {orig_ckpt_path}: {e}")
+
         return {
             "id": row["id"],
             "name": row["name"],
@@ -118,7 +146,7 @@ class ExperimentService:
             "original_checkpoint_path": row["original_checkpoint_path"],
             "retrained_checkpoint_path": row["retrained_checkpoint_path"],
             "unlearned_checkpoint_path": row["unlearned_checkpoint_path"],
-            "metrics": json.loads(row["metrics"]) if row["metrics"] else None,
+            "metrics": metrics,
             "insights": json.loads(row["insights"]) if row["insights"] else None,
         }
 
@@ -220,6 +248,7 @@ class ExperimentService:
                     "progress": prog,
                     "current_step": f"Training Original Model Epoch {ep}/{epochs}",
                     "log": f"Original Model - Epoch {ep}/{epochs} - Train Loss: {event['data']['train_loss']} - Train Acc: {event['data']['train_accuracy']}%",
+                    "data": event["data"],
                 })
 
         train_result = trainer.train(
@@ -245,7 +274,19 @@ class ExperimentService:
         checkpoint_path = os.path.join(self.checkpoints_dir, exp_id, "original.pt")
         trainer.save_checkpoint(checkpoint_path, metadata=train_result)
 
-        # Update experiment in DB
+        # Update experiment in DB with initial telemetry metrics
+        existing_metrics = exp.get("metrics") or {}
+        existing_metrics["original_model"] = {
+            "history": train_result.get("history", []),
+            "test": {
+                "loss": train_result.get("final_test_loss"),
+                "accuracy": train_result.get("final_test_accuracy"),
+            },
+            "training_time_seconds": train_result.get("training_time_seconds", 0.0),
+            "num_parameters": train_result.get("num_parameters"),
+            "device": train_result.get("device"),
+        }
+
         conn = get_db_connection()
         c = conn.cursor()
         c.execute("""
@@ -253,16 +294,20 @@ class ExperimentService:
             SET status = 'ORIGINAL_TRAINED',
                 original_checkpoint_path = ?,
                 train_config = ?,
+                metrics = ?,
                 updated_at = ?
             WHERE id = ?
         """, (
             checkpoint_path,
             json.dumps(config),
+            json.dumps(existing_metrics),
             datetime.datetime.utcnow().isoformat(),
             exp_id,
         ))
         conn.commit()
         conn.close()
+
+        logger.info(f"Original model trained for {exp_id}. Test accuracy: {test_eval['accuracy']}%. Checkpoint: {checkpoint_path}")
 
         return train_result
 
@@ -355,6 +400,7 @@ class ExperimentService:
                     "progress": prog,
                     "current_step": f"Exact Retraining Epoch {ep}/{epochs}",
                     "log": f"Retrained Reference - Epoch {ep}/{epochs} - Retain Loss: {event['data']['train_loss']} - Retain Acc: {event['data']['train_accuracy']}%",
+                    "data": event["data"],
                 })
 
         train_result = trainer.train(
@@ -378,20 +424,39 @@ class ExperimentService:
         checkpoint_path = os.path.join(self.checkpoints_dir, exp_id, "retrained.pt")
         trainer.save_checkpoint(checkpoint_path, metadata=train_result)
 
+        existing_metrics = exp.get("metrics") or {}
+        existing_metrics["retrained_model"] = {
+            "history": train_result.get("history", []),
+            "test": {
+                "loss": train_result.get("final_test_loss"),
+                "accuracy": train_result.get("final_test_accuracy"),
+            },
+            "retraining_time_seconds": train_result.get("training_time_seconds", 0.0),
+            "num_parameters": train_result.get("num_parameters"),
+        }
+
+        next_status = "READY_FOR_EVALUATION" if exp.get("unlearned_checkpoint_path") else "RETRAINED"
+
         conn = get_db_connection()
         c = conn.cursor()
         c.execute("""
             UPDATE experiments
             SET retrained_checkpoint_path = ?,
+                metrics = ?,
+                status = ?,
                 updated_at = ?
             WHERE id = ?
         """, (
             checkpoint_path,
+            json.dumps(existing_metrics),
+            next_status,
             datetime.datetime.utcnow().isoformat(),
             exp_id,
         ))
         conn.commit()
         conn.close()
+
+        logger.info(f"Retrained reference trained for {exp_id}. Test accuracy: {test_eval['accuracy']}%. Status: {next_status}")
 
         return train_result
 
@@ -445,6 +510,7 @@ class ExperimentService:
                     "progress": prog,
                     "current_step": f"Unlearning Epoch {ep}/{epochs} ({algorithm})",
                     "log": f"Unlearning - Epoch {ep}/{epochs} - Retain Acc: {event['data']['retain_accuracy']}%",
+                    "data": event["data"],
                 })
 
         if algorithm == "gradient_ascent":
@@ -493,23 +559,36 @@ class ExperimentService:
             checkpoint_path,
         )
 
+        existing_metrics = exp.get("metrics") or {}
+        existing_metrics["unlearned_model"] = {
+            "history": unlearn_result.get("history", []),
+            "unlearning_time_seconds": unlearn_result.get("unlearning_time_seconds", 0.0),
+        }
+
+        next_status = "READY_FOR_EVALUATION" if exp.get("retrained_checkpoint_path") else "UNLEARNED"
+
         conn = get_db_connection()
         c = conn.cursor()
         c.execute("""
             UPDATE experiments
             SET unlearned_checkpoint_path = ?,
                 unlearn_config = ?,
-                status = 'UNLEARNED',
+                metrics = ?,
+                status = ?,
                 updated_at = ?
             WHERE id = ?
         """, (
             checkpoint_path,
             json.dumps(unlearn_config),
+            json.dumps(existing_metrics),
+            next_status,
             datetime.datetime.utcnow().isoformat(),
             exp_id,
         ))
         conn.commit()
         conn.close()
+
+        logger.info(f"Unlearning finished for {exp_id} ({algorithm}). Status: {next_status}")
 
         return unlearn_result
 
@@ -561,6 +640,10 @@ class ExperimentService:
         # 1. Evaluate Original Model
         if step_callback:
             step_callback({"progress": 15.0, "current_step": "Evaluating Original Model", "log": "Evaluating Original Model across retain, forget, val, test..."})
+        orig_hist = orig_meta.get("history", [])
+        if not orig_hist and exp.get("metrics") and isinstance(exp["metrics"], dict):
+            orig_hist = exp["metrics"].get("original_model", {}).get("history", [])
+
         orig_eval = {
             "retain": compute_dataset_metrics(orig_model, retain_ds, device=device),
             "forget": compute_dataset_metrics(orig_model, forget_ds, device=device),
@@ -568,6 +651,7 @@ class ExperimentService:
             "test": compute_dataset_metrics(orig_model, test_ds, device=device),
             "training_time_seconds": orig_meta.get("training_time_seconds", 0.0),
             "peak_memory_mb": orig_meta.get("peak_memory_mb", 0.0),
+            "history": orig_hist,
         }
 
         # 2. Evaluate Unlearned Model
@@ -648,6 +732,7 @@ class ExperimentService:
             "original_model": orig_eval,
             "unlearned_model": unlearn_eval,
             "retrained_model": retrain_eval,
+            "has_retrained_reference": retrain_model is not None,
             "speedup_factor": speedup,
             "behavioral_similarity": similarity_metrics,
             "mia": {
@@ -658,29 +743,46 @@ class ExperimentService:
             "classes": classes,
         }
 
-        # 5. Generate Evidence-Based Research Insights
-        if step_callback:
-            step_callback({"progress": 95.0, "current_step": "Synthesizing Evidence-Based Insights", "log": "Generating scientific interpretations..."})
-        insights = self._generate_research_insights(metrics_payload, exp)
+        # 5. Generate Evidence-Based Research Insights and commit results
+        try:
+            if step_callback:
+                step_callback({"progress": 95.0, "current_step": "Synthesizing Evidence-Based Insights", "log": "Generating scientific interpretations..."})
+            insights = self._generate_research_insights(metrics_payload, exp)
 
-        # Save to DB
-        conn = get_db_connection()
-        c = conn.cursor()
-        c.execute("""
-            UPDATE experiments
-            SET metrics = ?,
-                insights = ?,
-                status = 'EVALUATED',
-                updated_at = ?
-            WHERE id = ?
-        """, (
-            json.dumps(metrics_payload),
-            json.dumps(insights),
-            datetime.datetime.utcnow().isoformat(),
-            exp_id,
-        ))
-        conn.commit()
-        conn.close()
+            # Save to DB
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("""
+                UPDATE experiments
+                SET metrics = ?,
+                    insights = ?,
+                    status = 'EVALUATED',
+                    updated_at = ?
+                WHERE id = ?
+            """, (
+                json.dumps(metrics_payload),
+                json.dumps(insights),
+                datetime.datetime.utcnow().isoformat(),
+                exp_id,
+            ))
+            conn.commit()
+            conn.close()
+            logger.info(f"Evaluation completed successfully for experiment {exp_id}.")
+        except Exception as e:
+            logger.exception(f"Evaluation failed during processing for {exp_id}")
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("""
+                UPDATE experiments
+                SET status = 'EVALUATION_FAILED',
+                    updated_at = ?
+                WHERE id = ?
+            """, (datetime.datetime.utcnow().isoformat(), exp_id))
+            conn.commit()
+            conn.close()
+            raise e
+
+        return metrics_payload
 
         return metrics_payload
 

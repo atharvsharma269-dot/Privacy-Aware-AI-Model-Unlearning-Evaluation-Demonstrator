@@ -1,3 +1,4 @@
+import logging
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from ..schemas.schemas import (
@@ -10,6 +11,7 @@ from ..schemas.schemas import (
 from ..services.experiment_service import ExperimentService
 from ..services.job_service import JobService
 
+logger = logging.getLogger("unlearning.api")
 router = APIRouter(prefix="/api/experiments", tags=["experiments"])
 exp_service = ExperimentService()
 job_service = JobService()
@@ -17,6 +19,7 @@ job_service = JobService()
 
 @router.post("")
 def create_experiment(payload: ExperimentCreate):
+    logger.info(f"[API] create_experiment request: {payload.name} (dataset: {payload.dataset_name}, model: {payload.model_name})")
     try:
         exp = exp_service.create_experiment(
             name=payload.name,
@@ -26,8 +29,10 @@ def create_experiment(payload: ExperimentCreate):
             seed=payload.seed,
             train_config=payload.train_config.model_dump() if payload.train_config else None,
         )
+        logger.info(f"[API] Experiment created: {exp['id']}")
         return exp
     except Exception as e:
+        logger.exception(f"[API] Failed to create experiment: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -40,18 +45,22 @@ def list_experiments():
 def get_experiment(experiment_id: str):
     exp = exp_service.get_experiment(experiment_id)
     if not exp:
+        logger.warning(f"[API] Experiment not found: {experiment_id}")
         raise HTTPException(status_code=404, detail="Experiment not found")
     return exp
 
 
 @router.post("/{experiment_id}/train")
 def train_original_model(experiment_id: str, payload: Optional[TrainConfig] = None):
+    logger.info(f"[API] train_original_model endpoint triggered for experiment: {experiment_id}")
     exp = exp_service.get_experiment(experiment_id)
     if not exp:
+        logger.error(f"[API] train_original_model: Experiment {experiment_id} not found")
         raise HTTPException(status_code=404, detail="Experiment not found")
 
     job_id = job_service.create_job(experiment_id, "TRAIN_ORIGINAL")
     cfg_dict = payload.model_dump() if payload else None
+    logger.info(f"[API] Created job {job_id} for TRAIN_ORIGINAL with config {cfg_dict}")
 
     def task_worker(step_callback):
         return exp_service.train_original_model(
@@ -66,6 +75,7 @@ def train_original_model(experiment_id: str, payload: Optional[TrainConfig] = No
 
 @router.post("/{experiment_id}/forget")
 def request_forgetting(experiment_id: str, payload: ForgettingRequest):
+    logger.info(f"[API] request_forgetting triggered for {experiment_id} with strategy={payload.strategy}")
     exp = exp_service.get_experiment(experiment_id)
     if not exp:
         raise HTTPException(status_code=404, detail="Experiment not found")
@@ -80,13 +90,16 @@ def request_forgetting(experiment_id: str, payload: ForgettingRequest):
             group_id=payload.group_id,
             num_groups=payload.num_groups,
         )
+        logger.info(f"[API] Forgetting partition created for {experiment_id}: retain={manifest['retain_count']}, forget={manifest['forget_count']}")
         return manifest
     except Exception as e:
+        logger.exception(f"[API] Forgetting partition creation failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/{experiment_id}/retrain")
 def retrain_model_from_scratch(experiment_id: str, payload: Optional[RetrainRequest] = None):
+    logger.info(f"[API] retrain_model_from_scratch triggered for {experiment_id}")
     exp = exp_service.get_experiment(experiment_id)
     if not exp:
         raise HTTPException(status_code=404, detail="Experiment not found")
@@ -96,6 +109,7 @@ def retrain_model_from_scratch(experiment_id: str, payload: Optional[RetrainRequ
 
     job_id = job_service.create_job(experiment_id, "EXACT_RETRAIN")
     cfg_dict = payload.model_dump() if payload else None
+    logger.info(f"[API] Created job {job_id} for EXACT_RETRAIN with config {cfg_dict}")
 
     def task_worker(step_callback):
         return exp_service.train_retrained_model(
@@ -110,6 +124,7 @@ def retrain_model_from_scratch(experiment_id: str, payload: Optional[RetrainRequ
 
 @router.post("/{experiment_id}/unlearn")
 def run_unlearning(experiment_id: str, payload: UnlearnRequest):
+    logger.info(f"[API] run_unlearning triggered for {experiment_id} using algorithm={payload.algorithm}")
     exp = exp_service.get_experiment(experiment_id)
     if not exp:
         raise HTTPException(status_code=404, detail="Experiment not found")
@@ -120,6 +135,7 @@ def run_unlearning(experiment_id: str, payload: UnlearnRequest):
         raise HTTPException(status_code=400, detail="Forgetting partition must be specified first.")
 
     job_id = job_service.create_job(experiment_id, f"UNLEARN_{payload.algorithm.upper()}")
+    logger.info(f"[API] Created job {job_id} for UNLEARN_{payload.algorithm.upper()}")
 
     def task_worker(step_callback):
         return exp_service.run_unlearning(
@@ -140,11 +156,13 @@ def run_unlearning(experiment_id: str, payload: UnlearnRequest):
 
 @router.post("/{experiment_id}/evaluate")
 def evaluate_experiment(experiment_id: str):
+    logger.info(f"[API] evaluate_experiment triggered for {experiment_id}")
     exp = exp_service.get_experiment(experiment_id)
     if not exp:
         raise HTTPException(status_code=404, detail="Experiment not found")
 
     job_id = job_service.create_job(experiment_id, "EVALUATE_ALL")
+    logger.info(f"[API] Created job {job_id} for EVALUATE_ALL")
 
     def task_worker(step_callback):
         return exp_service.evaluate_experiment(

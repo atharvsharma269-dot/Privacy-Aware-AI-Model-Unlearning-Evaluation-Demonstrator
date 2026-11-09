@@ -36,6 +36,7 @@ class JobService:
             "progress": 0.0,
             "current_step": "Initialized",
             "logs": [f"[{now}] Job initialized."],
+            "telemetry": [],
             "error_message": None,
             "result": None,
             "started_at": None,
@@ -74,7 +75,8 @@ class JobService:
                 prog = step_info.get("progress")
                 current_step = step_info.get("current_step") or step_info.get("type", "working")
                 log = step_info.get("log")
-                self.update_job(job_id, progress=prog, current_step=str(current_step), log_line=log)
+                telemetry_data = step_info.get("data")
+                self.update_job(job_id, progress=prog, current_step=str(current_step), log_line=log, telemetry_data=telemetry_data)
 
             result = target_fn(*args, step_callback=step_callback, **kwargs)
             self.complete_job(job_id, result)
@@ -90,6 +92,7 @@ class JobService:
         current_step: Optional[str] = None,
         log_line: Optional[str] = None,
         started_at: Optional[str] = None,
+        telemetry_data: Optional[Dict[str, Any]] = None,
     ):
         if job_id not in self.live_jobs:
             return
@@ -106,6 +109,10 @@ class JobService:
         if log_line:
             now = datetime.datetime.utcnow().strftime("%H:%M:%S")
             job["logs"].append(f"[{now}] {log_line}")
+        if telemetry_data:
+            if "telemetry" not in job:
+                job["telemetry"] = []
+            job["telemetry"].append(telemetry_data)
 
         conn = get_db_connection()
         c = conn.cursor()
@@ -133,6 +140,10 @@ class JobService:
         job["current_step"] = "Completed"
         job["completed_at"] = now
         job["result"] = result
+        if "telemetry" not in job:
+            job["telemetry"] = []
+        if isinstance(result, dict) and "history" in result and not job["telemetry"]:
+            job["telemetry"] = result["history"]
         job["logs"].append(f"[{datetime.datetime.utcnow().strftime('%H:%M:%S')}] Job successfully completed.")
 
         conn = get_db_connection()
@@ -204,6 +215,7 @@ class JobService:
             "progress": row["progress"],
             "current_step": row["current_step"],
             "logs": json.loads(row["logs"]) if row["logs"] else [],
+            "telemetry": json.loads(row["result"]).get("history", []) if row["result"] and isinstance(json.loads(row["result"]), dict) and "history" in json.loads(row["result"]) else [],
             "error_message": row["error_message"],
             "result": json.loads(row["result"]) if row["result"] else None,
             "started_at": row["started_at"],

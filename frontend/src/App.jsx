@@ -141,6 +141,7 @@ export default function App() {
             {currentTab === 'training' && (
               <ModelTraining
                 activeExperiment={activeExperiment}
+                activeJob={activeJob}
                 onExperimentUpdated={handleExperimentUpdated}
                 onStartJob={handleStartJob}
               />

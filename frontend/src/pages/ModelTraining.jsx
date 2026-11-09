@@ -3,7 +3,7 @@ import { PlayCircle, Cpu, Sliders, CheckCircle2, AlertCircle, RefreshCw, BarChar
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
 import { api } from '../services/api';
 
-export default function ModelTraining({ activeExperiment, onExperimentUpdated, onStartJob }) {
+export default function ModelTraining({ activeExperiment, activeJob, onExperimentUpdated, onStartJob }) {
   const [datasetName, setDatasetName] = useState(activeExperiment?.dataset_name || 'fashion_mnist');
   const [modelType, setModelType] = useState(activeExperiment?.model_name || 'mlp');
   const [epochs, setEpochs] = useState(activeExperiment?.train_config?.epochs || 5);
@@ -17,6 +17,16 @@ export default function ModelTraining({ activeExperiment, onExperimentUpdated, o
   const isTrained = activeExperiment?.status !== 'CREATED' && activeExperiment?.original_checkpoint_path;
 
   const handleStartTraining = async () => {
+    console.log('[ModelTraining] Start training requested:', {
+      activeExperimentId: activeExperiment?.id,
+      datasetName,
+      modelType,
+      epochs,
+      batchSize,
+      learningRate,
+      optimizer,
+      subsampleSize,
+    });
     setIsSubmitting(true);
     setError(null);
     try {
@@ -24,7 +34,7 @@ export default function ModelTraining({ activeExperiment, onExperimentUpdated, o
 
       if (!expId) {
         const displayName = datasetName === 'tofu' ? 'TOFU Author' : datasetName === 'mnist' ? 'MNIST' : 'Fashion-MNIST';
-        const newExp = await api.createExperiment({
+        const payload = {
           name: `${displayName} ${modelType.toUpperCase()} Training`,
           description: `Trained on ${displayName} with ${optimizer} lr=${learningRate}`,
           dataset_name: datasetName,
@@ -37,28 +47,39 @@ export default function ModelTraining({ activeExperiment, onExperimentUpdated, o
             optimizer,
             subsample_size: subsampleSize ? parseInt(subsampleSize) : null,
           },
-        });
+        };
+        console.log('[ModelTraining] Creating experiment before training:', payload);
+        const newExp = await api.createExperiment(payload);
         expId = newExp.id;
+        console.log('[ModelTraining] Experiment created:', newExp.id);
         onExperimentUpdated(newExp);
       }
 
-      const jobData = await api.trainOriginalModel(expId, {
+      const trainPayload = {
         epochs: parseInt(epochs),
         batch_size: parseInt(batchSize),
         learning_rate: parseFloat(learningRate),
         optimizer,
         subsample_size: subsampleSize ? parseInt(subsampleSize) : null,
-      });
+      };
+      console.log(`[ModelTraining] Calling api.trainOriginalModel(${expId}) with:`, trainPayload);
+      const jobData = await api.trainOriginalModel(expId, trainPayload);
+      console.log('[ModelTraining] Training job received:', jobData);
 
       onStartJob(jobData.job_id);
     } catch (err) {
+      console.error('[ModelTraining] Training error:', err);
       setError(err.message || 'Failed to start model training');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const trainHistory = activeExperiment?.metrics?.original_model?.history || [];
+  const isCurrentTrainingJob = activeJob?.job_type === 'TRAIN_ORIGINAL' && activeJob?.experiment_id === activeExperiment?.id;
+  const liveTelemetry = (isCurrentTrainingJob && activeJob?.telemetry?.length > 0) ? activeJob.telemetry : null;
+  const trainHistory = (liveTelemetry && liveTelemetry.length > 0)
+    ? liveTelemetry
+    : (activeExperiment?.metrics?.original_model?.history || []);
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto pb-10">
@@ -234,12 +255,27 @@ export default function ModelTraining({ activeExperiment, onExperimentUpdated, o
               <BarChart2 className="h-4 w-4 text-teal-800" />
               <span>Training Convergence & Telemetry</span>
             </h3>
-            {isTrained && (
-              <span className="text-xs text-teal-950 font-mono font-bold bg-teal-100 px-3 py-1 rounded-md border border-teal-300">
-                Final Test Acc: {activeExperiment?.metrics?.original_model?.test?.accuracy}%
-              </span>
-            )}
+            <div className="flex items-center space-x-2">
+              {isCurrentTrainingJob && activeJob?.status === 'RUNNING' && (
+                <span className="text-xs text-amber-900 font-mono font-bold bg-amber-100 px-3 py-1 rounded-md border border-amber-300 flex items-center space-x-1 animate-pulse">
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                  <span>TRAINING LIVE ({Math.round(activeJob.progress || 0)}%)</span>
+                </span>
+              )}
+              {isTrained && activeExperiment?.metrics?.original_model?.test?.accuracy && (
+                <span className="text-xs text-teal-950 font-mono font-bold bg-teal-100 px-3 py-1 rounded-md border border-teal-300">
+                  Final Test Acc: {activeExperiment?.metrics?.original_model?.test?.accuracy}%
+                </span>
+              )}
+            </div>
           </div>
+
+          {isCurrentTrainingJob && activeJob?.status === 'RUNNING' && (
+            <div className="p-3 bg-neutral-900 text-white rounded-xl font-mono text-xs flex items-center justify-between border border-black">
+              <span>CURRENT STEP: {activeJob.current_step || 'Processing batch...'}</span>
+              <span className="text-[#00FF66]">EPOCHS RECORDED: {trainHistory.length}/{epochs}</span>
+            </div>
+          )}
 
           {trainHistory.length > 0 ? (
             <div className="h-64 w-full">

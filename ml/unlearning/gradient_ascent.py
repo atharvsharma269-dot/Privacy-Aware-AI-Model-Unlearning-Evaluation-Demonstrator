@@ -1,6 +1,7 @@
 import copy
 import math
 import time
+import logging
 from typing import Callable, Dict, Optional, Any, List
 import psutil
 import torch
@@ -8,6 +9,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 from ..utils.hardware import get_device, get_hardware_info
 from ..training.trainer import ModelTrainer
+from ..utils.exceptions import CancellationError
+
+logger = logging.getLogger("unlearning.gradient_ascent")
 
 
 class RegularizedGradientAscentUnlearner:
@@ -57,9 +61,12 @@ class RegularizedGradientAscentUnlearner:
         epochs: int = 3,
         batch_size: int = 64,
         progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+        batch_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
         """
         Executes bounded gradient ascent on forget set while regularizing on retain set.
+        Includes batch-level cooperative cancellation checks.
         """
         retain_loader = DataLoader(retain_dataset, batch_size=batch_size, shuffle=True, drop_last=False)
         forget_loader = DataLoader(forget_dataset, batch_size=batch_size, shuffle=True, drop_last=False)
@@ -68,6 +75,7 @@ class RegularizedGradientAscentUnlearner:
         start_time = time.time()
         process = psutil.Process()
         peak_ram_mb = 0.0
+        total_batches = len(retain_loader)
 
         for epoch in range(1, epochs + 1):
             epoch_start = time.time()
@@ -79,7 +87,10 @@ class RegularizedGradientAscentUnlearner:
 
             forget_iter = iter(forget_loader)
 
-            for batch_retain in retain_loader:
+            for batch_idx, batch_retain in enumerate(retain_loader):
+                if cancel_check and cancel_check():
+                    logger.info(f"Cancellation detected during unlearning at epoch {epoch}, batch {batch_idx + 1}/{total_batches}. Halting.")
+                    raise CancellationError(f"Unlearning cancelled by user at epoch {epoch}, batch {batch_idx + 1}/{total_batches}")
                 if len(batch_retain) == 3:
                     _, x_retain, y_retain = batch_retain
                 else:
@@ -142,8 +153,25 @@ class RegularizedGradientAscentUnlearner:
                 retain_total += y_retain.size(0)
                 retain_correct += pred.eq(y_retain).sum().item()
 
+                if batch_callback and (batch_idx % max(1, total_batches // 5) == 0 or batch_idx == total_batches - 1):
+                    batch_callback({
+                        "type": "batch_progress",
+                        "epoch": epoch,
+                        "epochs_total": epochs,
+                        "batch": batch_idx + 1,
+                        "batches_total": total_batches,
+                        "train_loss": round(loss_retain.item(), 4),
+                        "train_accuracy": round((retain_correct / max(1, retain_total)) * 100.0, 2),
+                        "elapsed_seconds": round(time.time() - start_time, 2),
+                    })
+
             epoch_retain_loss = running_retain_loss / max(1, retain_total)
             epoch_retain_acc = (retain_correct / max(1, retain_total)) * 100.0
+
+            # Safe boundary cancellation check before evaluation
+            if cancel_check and cancel_check():
+                logger.info(f"Cancellation detected during unlearning at epoch {epoch} boundary. Halting.")
+                raise CancellationError(f"Unlearning cancelled by user at end of epoch {epoch}")
 
             # Evaluate on forget set and validation set
             evaluator = ModelTrainer(self.model, device=self.device)

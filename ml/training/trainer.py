@@ -1,5 +1,6 @@
 import os
 import time
+import logging
 from typing import Callable, Dict, Optional, Any, List
 import numpy as np
 import psutil
@@ -8,6 +9,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 from ..utils.hardware import get_device, get_hardware_info
 from ..utils.seed import set_seed
+from ..utils.exceptions import CancellationError
+
+logger = logging.getLogger("unlearning.trainer")
 
 
 class ModelTrainer:
@@ -53,9 +57,11 @@ class ModelTrainer:
         epochs: int = 5,
         batch_size: int = 64,
         progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+        batch_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> Dict[str, Any]:
         """
-        Executes model training loop.
+        Executes model training loop with batch-level cancellation checks and telemetry.
         """
         train_loader = DataLoader(
             train_dataset,
@@ -68,6 +74,7 @@ class ModelTrainer:
         start_time = time.time()
         process = psutil.Process()
         peak_ram_mb = 0.0
+        total_batches = len(train_loader)
 
         for epoch in range(1, epochs + 1):
             epoch_start = time.time()
@@ -76,7 +83,12 @@ class ModelTrainer:
             correct = 0
             total = 0
 
-            for batch_data in train_loader:
+            for batch_idx, batch_data in enumerate(train_loader):
+                # Cooperative batch-level cancellation check
+                if cancel_check and cancel_check():
+                    logger.info(f"Cancellation detected at epoch {epoch}, batch {batch_idx + 1}/{total_batches}. Halting training.")
+                    raise CancellationError(f"Training cancelled by user at epoch {epoch}, batch {batch_idx + 1}/{total_batches}")
+
                 # IndexedDataset returns (idx, inputs, labels)
                 if len(batch_data) == 3:
                     _, inputs, labels = batch_data
@@ -97,8 +109,25 @@ class ModelTrainer:
                 total += labels.size(0)
                 correct += predicted.eq(labels).sum().item()
 
+                if batch_callback and (batch_idx % max(1, total_batches // 5) == 0 or batch_idx == total_batches - 1):
+                    batch_callback({
+                        "type": "batch_progress",
+                        "epoch": epoch,
+                        "epochs_total": epochs,
+                        "batch": batch_idx + 1,
+                        "batches_total": total_batches,
+                        "train_loss": round(loss.item(), 4),
+                        "train_accuracy": round((correct / max(1, total)) * 100.0, 2),
+                        "elapsed_seconds": round(time.time() - start_time, 2),
+                    })
+
             train_loss = running_loss / max(1, total)
             train_acc = (correct / max(1, total)) * 100.0
+
+            # Safe boundary cancellation check before validation inference
+            if cancel_check and cancel_check():
+                logger.info(f"Cancellation detected at epoch {epoch} boundary. Halting training.")
+                raise CancellationError(f"Training cancelled by user at end of epoch {epoch}")
 
             # Evaluate on validation dataset if provided
             val_loss = None
@@ -131,6 +160,7 @@ class ModelTrainer:
                     "epochs": epochs,
                     "data": epoch_record,
                     "elapsed_seconds": round(time.time() - start_time, 2),
+                    "last_completed_epoch": epoch,
                 })
 
         total_duration = time.time() - start_time
@@ -194,17 +224,35 @@ class ModelTrainer:
         self,
         checkpoint_path: str,
         metadata: Optional[Dict[str, Any]] = None,
+        is_complete: bool = True,
+        checkpoint_status: str = "complete",
     ) -> None:
-        """Saves weights, optimizer state, and training metadata."""
+        """
+        Saves weights, optimizer state, and training metadata atomically.
+        Writes to a temporary .tmp file first, then atomically promotes via os.replace.
+        """
         os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
+        meta = dict(metadata or {})
+        meta["is_complete"] = is_complete
+        meta["checkpoint_status"] = checkpoint_status
+        meta["saved_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+        temp_path = f"{checkpoint_path}.tmp"
         torch.save(
             {
                 "model_state_dict": self.model.state_dict(),
                 "optimizer_state_dict": self.optimizer.state_dict(),
-                "metadata": metadata or {},
+                "metadata": meta,
             },
-            checkpoint_path,
+            temp_path,
         )
+        if is_complete:
+            os.replace(temp_path, checkpoint_path)
+            logger.info(f"Atomically promoted complete checkpoint: {checkpoint_path}")
+        else:
+            partial_path = f"{checkpoint_path}.partial"
+            os.replace(temp_path, partial_path)
+            logger.info(f"Saved partial checkpoint: {partial_path}")
 
     def load_checkpoint(self, checkpoint_path: str) -> Dict[str, Any]:
         """Loads weights and returns stored metadata."""

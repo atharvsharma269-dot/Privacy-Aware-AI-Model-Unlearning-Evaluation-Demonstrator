@@ -8,6 +8,7 @@ import {
   AlertCircle,
   RefreshCw,
   Layers,
+  RotateCcw,
 } from 'lucide-react';
 import {
   BarChart,
@@ -26,6 +27,7 @@ import { api } from '../services/api';
 
 export default function EvaluationDashboard({ activeExperiment, onExperimentUpdated, onStartJob }) {
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [isSubmittingRetrain, setIsSubmittingRetrain] = useState(false);
   const [error, setError] = useState(null);
 
   const metrics = activeExperiment?.metrics;
@@ -39,6 +41,26 @@ export default function EvaluationDashboard({ activeExperiment, onExperimentUpda
   const hasCheckpoints = Boolean(
     activeExperiment?.original_checkpoint_path && activeExperiment?.unlearned_checkpoint_path
   );
+
+  const handleStartRetraining = async () => {
+    if (!activeExperiment?.id) return;
+    setIsSubmittingRetrain(true);
+    setError(null);
+    try {
+      const payload = {
+        epochs: 5,
+        batch_size: 64,
+        learning_rate: 0.001,
+        optimizer: 'adam',
+      };
+      const job = await api.retrainModel(activeExperiment.id, payload);
+      onStartJob(job.job_id);
+    } catch (err) {
+      setError(err.message || 'Failed to start retraining');
+    } finally {
+      setIsSubmittingRetrain(false);
+    }
+  };
 
   const handleRunEvaluation = async () => {
     if (!activeExperiment?.id) return;
@@ -120,6 +142,35 @@ export default function EvaluationDashboard({ activeExperiment, onExperimentUpda
         </div>
       )}
 
+      {activeExperiment?.status === 'EVALUATION_FAILED' && (
+        <div className="p-4 rounded-2xl bg-rose-100 border border-rose-400 text-rose-950 text-xs flex items-center space-x-2 font-mono font-bold">
+          <AlertCircle className="h-5 w-5 text-rose-700 shrink-0" />
+          <span>STATUS: EVALUATION_FAILED. A fatal runtime error occurred during the previous evaluation run. Check model checkpoints or re-run evaluation.</span>
+        </div>
+      )}
+
+      {metrics && !ret && (
+        <div className="p-5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-start space-x-2.5">
+            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold font-mono uppercase text-amber-900 block">Retrained Reference Baseline Not Executed</span>
+              <p className="text-amber-800 text-[11px] mt-0.5">
+                This run evaluated only the original and unlearned models. Retrained baseline columns show <em>Not Trained</em>. For complete 3-way benchmarking (including retrained MIA baseline and empirical speedup factor), train the retrained reference.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleStartRetraining}
+            disabled={isSubmittingRetrain || !activeExperiment?.partition_manifest}
+            className="px-4 py-2 bg-amber-900 hover:bg-amber-800 text-white font-mono text-xs font-bold rounded-xl transition flex items-center space-x-1.5 shrink-0 disabled:opacity-50"
+          >
+            <RotateCcw className={`h-3.5 w-3.5 ${isSubmittingRetrain ? 'animate-spin' : ''}`} />
+            <span>Train Retrained Baseline</span>
+          </button>
+        </div>
+      )}
+
       {metrics ? (
         <>
           {/* Top KPI Cards with Accent Borders */}
@@ -135,19 +186,19 @@ export default function EvaluationDashboard({ activeExperiment, onExperimentUpda
               title="Forget Set Acc"
               value={unl?.forget?.accuracy}
               unit="%"
-              subtitle={`Retrained Ref: ${ret?.forget?.accuracy ?? 'N/A'}%`}
+              subtitle={ret ? `Retrained Ref: ${ret.forget?.accuracy}%` : 'Retrained Ref: Not Trained'}
               variant="amber"
             />
             <MetricCard
               title="MIA Attack ROC-AUC"
               value={mia?.unlearned?.roc_auc}
-              subtitle={`Original AUC: ${mia?.original?.roc_auc ?? 'N/A'}`}
+              subtitle={ret ? `Retrained AUC: ${mia?.retrained?.roc_auc}` : `Original AUC: ${mia?.original?.roc_auc ?? 'N/A'}`}
               variant="purple"
             />
             <MetricCard
               title="Compute Speedup"
-              value={speedup ? `${speedup}x` : 'N/A'}
-              subtitle={`${unl?.unlearning_time_seconds || 0}s vs ${ret?.retraining_time_seconds || 0}s`}
+              value={speedup ? `${speedup}x` : (ret ? '1.0x' : 'N/A')}
+              subtitle={ret ? `${unl?.unlearning_time_seconds || 0}s vs ${ret?.retraining_time_seconds || 0}s` : 'Retrained model required'}
               variant="blue"
             />
           </div>
@@ -182,38 +233,52 @@ export default function EvaluationDashboard({ activeExperiment, onExperimentUpda
                   <tr className="hover:bg-teal-50/50 transition">
                     <td className="py-3.5 px-4 font-sans font-bold text-teal-950">Retain Set Accuracy</td>
                     <td className="py-3.5 px-4 font-semibold">{orig?.retain?.accuracy}%</td>
-                    <td className="py-3.5 px-4 bg-teal-100/50 text-teal-950 font-extrabold">{ret?.retain?.accuracy ?? 'N/A'}%</td>
+                    <td className="py-3.5 px-4 bg-teal-100/50 text-teal-950 font-extrabold">
+                      {ret ? `${ret.retain?.accuracy}%` : <span className="text-neutral-400 italic font-mono text-[11px]">Not Trained</span>}
+                    </td>
                     <td className="py-3.5 px-4 bg-teal-200/40 text-teal-900 font-extrabold">{unl?.retain?.accuracy}%</td>
                   </tr>
                   <tr className="hover:bg-teal-50/50 transition">
                     <td className="py-3.5 px-4 font-sans font-bold text-teal-950">Forget Set Accuracy</td>
                     <td className="py-3.5 px-4 text-rose-600 font-semibold">{orig?.forget?.accuracy}% (Memorized)</td>
-                    <td className="py-3.5 px-4 bg-teal-100/50 text-teal-950 font-extrabold">{ret?.forget?.accuracy ?? 'N/A'}% (Zero-Knowledge)</td>
+                    <td className="py-3.5 px-4 bg-teal-100/50 text-teal-950 font-extrabold">
+                      {ret ? `${ret.forget?.accuracy}% (Zero-Knowledge)` : <span className="text-neutral-400 italic font-mono text-[11px]">Not Trained</span>}
+                    </td>
                     <td className="py-3.5 px-4 bg-teal-200/40 text-teal-900 font-extrabold">{unl?.forget?.accuracy}%</td>
                   </tr>
                   <tr className="hover:bg-teal-50/50 transition">
                     <td className="py-3.5 px-4 font-sans font-bold text-teal-950">Forget Set Loss</td>
                     <td className="py-3.5 px-4">{orig?.forget?.loss}</td>
-                    <td className="py-3.5 px-4 bg-teal-100/50 font-semibold">{ret?.forget?.loss ?? 'N/A'}</td>
+                    <td className="py-3.5 px-4 bg-teal-100/50 font-semibold">
+                      {ret ? ret.forget?.loss : <span className="text-neutral-400 italic font-mono text-[11px]">Not Trained</span>}
+                    </td>
                     <td className="py-3.5 px-4 bg-teal-200/40 font-semibold text-teal-900">{unl?.forget?.loss}</td>
                   </tr>
                   <tr className="hover:bg-teal-50/50 transition">
                     <td className="py-3.5 px-4 font-sans font-bold text-teal-950">Test Generalization Acc</td>
                     <td className="py-3.5 px-4">{orig?.test?.accuracy}%</td>
-                    <td className="py-3.5 px-4 bg-teal-100/50 font-semibold">{ret?.test?.accuracy ?? 'N/A'}%</td>
+                    <td className="py-3.5 px-4 bg-teal-100/50 font-semibold">
+                      {ret ? `${ret.test?.accuracy}%` : <span className="text-neutral-400 italic font-mono text-[11px]">Not Trained</span>}
+                    </td>
                     <td className="py-3.5 px-4 bg-teal-200/40 font-bold text-teal-900">{unl?.test?.accuracy}%</td>
                   </tr>
                   <tr className="hover:bg-teal-50/50 transition">
                     <td className="py-3.5 px-4 font-sans font-bold text-teal-950">MIA Attack ROC-AUC</td>
                     <td className="py-3.5 px-4 text-rose-600 font-bold">{mia?.original?.roc_auc ?? 'N/A'} (High Risk)</td>
-                    <td className="py-3.5 px-4 bg-teal-100/50 text-teal-950 font-bold">{mia?.retrained?.roc_auc ?? 'N/A'} (Baseline)</td>
+                    <td className="py-3.5 px-4 bg-teal-100/50 text-teal-950 font-bold">
+                      {ret ? `${mia?.retrained?.roc_auc ?? 'N/A'} (Baseline)` : <span className="text-neutral-400 italic font-mono text-[11px]">Not Trained</span>}
+                    </td>
                     <td className="py-3.5 px-4 bg-teal-200/40 text-teal-900 font-bold">{mia?.unlearned?.roc_auc ?? 'N/A'}</td>
                   </tr>
                   <tr className="hover:bg-teal-50/50 transition">
                     <td className="py-3.5 px-4 font-sans font-bold text-teal-950">Execution Duration</td>
                     <td className="py-3.5 px-4">{orig?.training_time_seconds}s</td>
-                    <td className="py-3.5 px-4 bg-teal-100/50">{ret?.retraining_time_seconds ?? 'N/A'}s</td>
-                    <td className="py-3.5 px-4 bg-teal-200/40 text-teal-900 font-bold">{unl?.unlearning_time_seconds}s ({speedup || 'N/A'}x speedup)</td>
+                    <td className="py-3.5 px-4 bg-teal-100/50">
+                      {ret ? `${ret.retraining_time_seconds}s` : <span className="text-neutral-400 italic font-mono text-[11px]">Not Trained</span>}
+                    </td>
+                    <td className="py-3.5 px-4 bg-teal-200/40 text-teal-900 font-bold">
+                      {unl?.unlearning_time_seconds}s ({speedup ? `${speedup}x speedup` : 'Retrained model required'})
+                    </td>
                   </tr>
                 </tbody>
               </table>

@@ -25,13 +25,38 @@ export default function Navbar({ activeExperiment, hardware, onRefresh, isRefres
       </div>
 
       <div className="flex items-center space-x-3">
-        {/* Active Experiment Readout */}
+        {/* Active Experiment Readout: Distinct fields for ID, Name, Model status, and Eval status */}
         {activeExperiment && (
           <div className="hidden lg:flex items-center space-x-2 border border-black bg-neutral-100 px-2.5 py-1 text-[11px]">
-            <span className="text-neutral-500">EXP_ID:</span>
-            <span className="font-bold text-black max-w-[140px] truncate">{activeExperiment.name}</span>
+            <span className="text-neutral-500" title={activeExperiment.id}>
+              ID: <span className="font-mono font-bold text-black">{activeExperiment.id.slice(0, 10)}</span>
+            </span>
             <span className="text-neutral-400">|</span>
-            <span className="text-black font-bold uppercase">{activeExperiment.status}</span>
+            <span className="text-neutral-600 truncate max-w-[120px]" title={activeExperiment.name}>
+              {activeExperiment.name}
+            </span>
+            <span className="text-neutral-400">|</span>
+            <div className="flex items-center space-x-1 font-mono text-[10px]">
+              <span className={`px-1 py-0.5 border ${activeExperiment.original_checkpoint_path ? 'bg-black text-white border-black font-bold' : 'bg-neutral-200 text-neutral-500 border-neutral-300'}`} title="Original Model Checkpoint">
+                ORIG:{activeExperiment.original_checkpoint_path ? 'OK' : 'PEND'}
+              </span>
+              <span className={`px-1 py-0.5 border ${activeExperiment.unlearned_checkpoint_path ? 'bg-black text-white border-black font-bold' : 'bg-neutral-200 text-neutral-500 border-neutral-300'}`} title="Unlearned Model Checkpoint">
+                UNL:{activeExperiment.unlearned_checkpoint_path ? 'OK' : 'NONE'}
+              </span>
+              <span className={`px-1 py-0.5 border ${activeExperiment.retrained_checkpoint_path ? 'bg-black text-white border-black font-bold' : 'bg-neutral-200 text-neutral-500 border-neutral-300'}`} title="Retrained Reference Checkpoint">
+                RET:{activeExperiment.retrained_checkpoint_path ? 'OK' : 'NONE'}
+              </span>
+            </div>
+            <span className="text-neutral-400">|</span>
+            <span className={`px-1.5 py-0.5 font-bold uppercase ${
+              activeExperiment.status === 'EVALUATED'
+                ? 'bg-[#00FF66] text-black border border-black'
+                : activeExperiment.status === 'EVALUATION_FAILED' || activeExperiment.status === 'FAILED'
+                ? 'bg-rose-600 text-white border border-rose-800'
+                : 'bg-neutral-300 text-black'
+            }`}>
+              {activeExperiment.status}
+            </span>
           </div>
         )}
 

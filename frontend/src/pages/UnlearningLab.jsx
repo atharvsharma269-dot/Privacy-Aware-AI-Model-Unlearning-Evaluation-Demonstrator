@@ -14,9 +14,9 @@ import {
 import { api } from '../services/api';
 
 export default function UnlearningLab({ activeExperiment, onExperimentUpdated, onStartJob, onNavigate }) {
-  const [algorithm, setAlgorithm] = useState('retain_fine_tuning');
+  const [algorithm, setAlgorithm] = useState('gradient_ascent');
   const [unlearnEpochs, setUnlearnEpochs] = useState(3);
-  const [learningRate, setLearningRate] = useState(0.0003);
+  const [learningRate, setLearningRate] = useState(0.0001);
   const [alphaAscent, setAlphaAscent] = useState(0.4);
   const [betaProximity, setBetaProximity] = useState(0.01);
   const [maxForgetLoss, setMaxForgetLoss] = useState(2.35);
@@ -148,37 +148,53 @@ export default function UnlearningLab({ activeExperiment, onExperimentUpdated, o
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <button
                 type="button"
-                onClick={() => setAlgorithm('retain_fine_tuning')}
-                className={`p-3.5 rounded-xl border text-left transition-all ${
-                  algorithm === 'retain_fine_tuning'
-                    ? 'border-teal-750 bg-teal-100/70 shadow-sm text-teal-950'
-                    : 'border-teal-850/15 bg-teal-50/60 text-teal-800 hover:border-teal-400'
-                }`}
-              >
-                <div className="font-bold text-xs text-teal-950 flex items-center space-x-1.5 font-mono">
-                  <ShieldCheck className="h-4 w-4 text-teal-800" />
-                  <span>Retain Fine-Tuning</span>
-                </div>
-                <p className="text-[10px] text-teal-700 mt-1 leading-relaxed font-medium">
-                  Fine-tune original model strictly on Retain samples with reduced learning rate.
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAlgorithm('gradient_ascent')}
+                onClick={() => {
+                  setAlgorithm('gradient_ascent');
+                  setLearningRate(0.0001);
+                }}
                 className={`p-3.5 rounded-xl border text-left transition-all ${
                   algorithm === 'gradient_ascent'
                     ? 'border-teal-750 bg-teal-100/70 shadow-sm text-teal-950'
                     : 'border-teal-850/15 bg-teal-50/60 text-teal-800 hover:border-teal-400'
                 }`}
               >
-                <div className="font-bold text-xs text-teal-950 flex items-center space-x-1.5 font-mono">
-                  <Flame className="h-4 w-4 text-amber-700" />
-                  <span>Gradient Ascent</span>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-bold text-xs text-teal-950 flex items-center space-x-1.5 font-mono">
+                    <Flame className="h-4 w-4 text-amber-700" />
+                    <span>Gradient Ascent</span>
+                  </div>
+                  <span className="text-[9px] font-mono font-bold bg-[#00FF66] text-black px-1.5 py-0.5 border border-black">
+                    RECOMMENDED
+                  </span>
                 </div>
                 <p className="text-[10px] text-teal-700 mt-1 leading-relaxed font-medium">
-                  Bounded loss maximization on forget set regularized by retain set cross-entropy.
+                  Bounded loss maximization on forget set regularized by retain set cross-entropy. Demonstrated unlearning efficacy (Forget Acc ~82%, MIA AUC ~0.51).
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAlgorithm('retain_fine_tuning');
+                  setLearningRate(0.0003);
+                }}
+                className={`p-3.5 rounded-xl border text-left transition-all ${
+                  algorithm === 'retain_fine_tuning'
+                    ? 'border-teal-750 bg-teal-100/70 shadow-sm text-teal-950'
+                    : 'border-teal-850/15 bg-teal-50/60 text-teal-800 hover:border-teal-400'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-bold text-xs text-teal-950 flex items-center space-x-1.5 font-mono">
+                    <ShieldCheck className="h-4 w-4 text-teal-800" />
+                    <span>Retain Fine-Tuning</span>
+                  </div>
+                  <span className="text-[9px] font-mono text-neutral-600 bg-neutral-200 px-1.5 py-0.5 border border-neutral-300">
+                    BASELINE
+                  </span>
+                </div>
+                <p className="text-[10px] text-teal-700 mt-1 leading-relaxed font-medium">
+                  Fine-tune original model on Retain samples only. Updates weights, but retains high forget accuracy (~95%) and MIA vulnerability (~0.57) on classification.
                 </p>
               </button>
             </div>
@@ -325,20 +341,58 @@ export default function UnlearningLab({ activeExperiment, onExperimentUpdated, o
       </div>
 
       {/* Navigation Callout */}
-      {(hasUnlearned || hasRetrained) && (
-        <div className="p-6 rounded-3xl bg-teal-950 text-teal-100 border border-teal-850 shadow-tactile flex items-center justify-between">
+      {hasUnlearned && hasRetrained && (
+        <div className="p-6 rounded-3xl bg-neutral-900 text-white border border-black shadow-tactile flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
-            <h4 className="text-base font-bold text-white font-serif">Models Ready for Comprehensive Benchmark</h4>
-            <p className="text-xs text-teal-200/80">
-              Run the full 3-way evaluation suite (MIA attacks, KL-divergence, test degradation, and speedup ratios).
+            <div className="flex items-center space-x-2">
+              <span className="h-2 w-2 rounded-full bg-[#00FF66] animate-pulse"></span>
+              <h4 className="text-sm font-bold font-mono uppercase text-white">All Checkpoints Ready for 3-Way Benchmark</h4>
+            </div>
+            <p className="text-xs text-neutral-300">
+              Original, Unlearned, and Exact Retrained models are present. You can now execute the full scientific evaluation (Forget/Retain accuracy, MIA attack ROC-AUC, behavioral KL-divergence, and speedup factor).
             </p>
           </div>
           <button
             onClick={() => onNavigate('evaluation')}
-            className="px-6 py-3 rounded-xl bg-teal-300 hover:bg-teal-200 text-teal-950 font-bold text-xs uppercase tracking-wider transition shadow-tactile shrink-0"
+            className="px-6 py-3 rounded-xl bg-[#00FF66] hover:bg-[#00dd55] text-black font-bold text-xs uppercase tracking-wider transition font-mono border border-black shrink-0"
           >
-            Launch Evaluation Suite &rarr;
+            Launch Full 3-Way Evaluation &rarr;
           </button>
+        </div>
+      )}
+
+      {hasUnlearned && !hasRetrained && (
+        <div className="p-6 rounded-3xl bg-amber-50 text-amber-950 border border-amber-300 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center space-x-2 text-amber-900 font-bold font-mono text-xs">
+              <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+              <span>NOTICE: RETRAINED REFERENCE MODEL NOT YET EXECUTED</span>
+            </div>
+            <p className="text-xs text-amber-800">
+              Your unlearned model is ready. However, the exact retrained reference has not been trained yet. If you evaluate now, retrained metrics will show N/A and speedup / behavioral similarity cannot be calculated. We strongly recommend running <strong>Train Exact Retrained Reference</strong> above.
+            </p>
+          </div>
+          <div className="flex items-center space-x-2 shrink-0">
+            <button
+              onClick={handleStartRetraining}
+              disabled={isSubmittingRetrain}
+              className="px-4 py-2.5 rounded-xl bg-amber-900 hover:bg-amber-800 text-white font-bold text-xs font-mono uppercase transition"
+            >
+              Train Reference First
+            </button>
+            <button
+              onClick={() => onNavigate('evaluation')}
+              className="px-4 py-2.5 rounded-xl bg-white hover:bg-neutral-100 text-neutral-900 font-bold text-xs font-mono border border-neutral-300 uppercase transition"
+            >
+              Evaluate Anyway &rarr;
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!hasUnlearned && hasRetrained && (
+        <div className="p-5 rounded-2xl bg-neutral-100 border border-neutral-300 text-neutral-800 text-xs flex items-center justify-between font-mono">
+          <span>Retrained reference model is ready. Execute an unlearning algorithm above to create the unlearned model.</span>
         </div>
       )}
     </div>
