@@ -19,3 +19,7 @@ Thumbs.db
 data/*
 !data/tofu_dataset/
 !data/f1_dataset/
+
+# Test coverage artifacts
+.coverage
+htmlcov/
