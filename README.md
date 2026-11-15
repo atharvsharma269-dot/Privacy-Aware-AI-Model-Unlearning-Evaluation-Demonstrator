@@ -28,32 +28,38 @@ The repository is organized following clean architectural principles:
 privacy-aware-unlearning/
 ├── backend/
 │   ├── app/
-│   │   ├── api/             # REST endpoints (datasets, experiments, jobs, export)
+│   │   ├── api/             # REST endpoints (datasets, experiments, jobs, export, tofu, f1)
 │   │   ├── database/        # SQLite database & experiment/job tracking schemas
 │   │   ├── schemas/         # Pydantic validation schemas
-│   │   ├── services/        # Job manager, dataset service, experiment engine
+│   │   ├── services/        # Job manager, dataset service, experiment engine, tofu & f1 services
 │   │   └── main.py          # FastAPI application & SPA static server
-│   └── requirements.txt
+│   └── requirements.txt     # Backend dependency specification
 ├── frontend/
 │   ├── src/
-│   │   ├── components/      # Navbar, Sidebar, MetricCard, JobProgressModal
-│   │   ├── pages/           # 8-page full-stack research dashboard
+│   │   ├── components/      # Navbar, Sidebar, MetricCard, JobProgressModal, ErrorBoundary
+│   │   ├── pages/           # Full-stack research dashboard & interactive unlearning labs
 │   │   ├── services/        # API client for asynchronous telemetry
 │   │   └── App.jsx
 │   ├── package.json
 │   └── vite.config.js
 ├── ml/
-│   ├── datasets/            # Fashion-MNIST & MNIST loaders, strict partitioner
+│   ├── datasets/            # Fashion-MNIST, MNIST & TOFU benchmark loaders, partitioner
 │   ├── models/              # MLP baseline and CNN architectures
 │   ├── training/            # PyTorch training pipeline with telemetry
 │   ├── unlearning/          # Retain fine-tuning & Regularized gradient ascent
-│   ├── evaluation/          # Metrics, MIA ROC-AUC evaluator, behavioral similarity
-│   └── utils/               # Hardware detection, deterministic seeding
+│   ├── evaluation/          # Metrics, MIA ROC-AUC evaluator, behavioral similarity, TOFU eval
+│   └── utils/               # Hardware detection, deterministic seeding, exceptions
 ├── experiments/             # SQLite DB and export logs
 ├── checkpoints/             # Saved PyTorch model checkpoints (.pt)
-├── tests/                   # Automated tests (partitioning, MIA, APIs)
+├── tests/                   # 18 automated test suites (138 tests, 85% coverage)
+├── .python-version          # Python 3.11.0 runtime declaration
+├── pyproject.toml           # Pytest tool configuration (pythonpath = .)
+├── pytest.ini               # Pytest discovery configuration
+├── requirements.txt         # Root dependency manifest (CPU PyTorch, FastAPI, Pytest)
+├── run_acceptance_tests.py  # Comprehensive test acceptance runner
 ├── run_demo_experiment.py   # CLI end-to-end benchmark pipeline
-├── run_server.py            # Unified server launcher (Backend + Frontend)
+├── run_server.py            # Unified server launcher (Backend + Frontend SPA)
+├── run_tofu_benchmark.py    # TOFU benchmark evaluation runner
 └── README.md
 ```
 
@@ -160,18 +166,18 @@ The demonstrator natively integrates the official **TOFU (Task of Fictitious Unl
 
 ---
 
-## 6. Installation and Execution
+## 6. Installation, Local Execution & Cloud Deployment
 
 ### Prerequisites
-- Python 3.11+
+- Python 3.11+ (declared in `.python-version`)
 - Node.js v18+ and npm
 
 ### Step 1: Install Dependencies
 ```bash
-# Backend dependencies
-pip install -r backend/requirements.txt
+# Backend dependencies (from project root)
+pip install -r requirements.txt
 
-# Frontend dependencies
+# Frontend dependencies & build
 cd frontend
 npm install
 npm run build
@@ -193,10 +199,19 @@ python run_tofu_benchmark.py
 python run_server.py
 ```
 Open your browser at:
-- **Interactive Web Dashboard**: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+- **Interactive Web Dashboard**: [http://127.0.0.1:8000](http://127.0.0.1:8000) or [http://localhost:8000](http://localhost:8000)
 - **Interactive REST API Docs**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- **API Root**: [http://127.0.0.1:8000/api](http://127.0.0.1:8000/api)
 
-*(Optional: For frontend hot-reloading development, run `cd frontend && npm run dev` on port 5173).*
+> [!NOTE]
+> Always access the application via `http://localhost:8000` or `http://127.0.0.1:8000`. On Windows, Chromium browsers will reject `http://0.0.0.0:8000` with `ERR_ADDRESS_INVALID` as `0.0.0.0` is a meta-address reserved for server-side interface binding.
+
+### Cloud Deployment (Render Web Service)
+When deploying on Render, configure the Web Service with:
+- **Root Directory**: *(leave blank / repository root)*
+- **Environment**: `Python 3`
+- **Build Command**: `pip install -r requirements.txt`
+- **Start Command**: `python run_server.py` *(or `uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT`)*
 
 ---
 
@@ -240,13 +255,42 @@ To run a live, scientifically rigorous demonstration for an evaluating professor
 
 ---
 
-## 9. Automated Testing
+## 9. Automated Testing & Verification Suite
 
-Run the automated test suite covering dataset partitioning, non-overlap validation, model checkpointing, unlearning loops, TOFU benchmark verification, API endpoints, and F1 live demo verification:
+The repository contains a comprehensive test suite of **138 automated unit, integration, and lifecycle tests** across 18 test suites, delivering **85% statement coverage** across the backend services and API routers:
+
 ```bash
-# Run all 24 automated test suites
+# Run all 138 automated unit & integration tests
 pytest tests/ -v
+
+# Run tests with terminal statement coverage report
+pytest tests/ --cov=backend --cov-report=term-missing
+
+# Generate full HTML coverage report in htmlcov/
+pytest tests/ --cov=backend --cov-report=html
 ```
+
+### Coverage by Core Component
+| Component | Coverage | Key Verified Behaviors |
+|---|:---:|---|
+| `backend/app/api/jobs.py` | **100%** | Async job dispatch, cooperative cancellation, terminal statuses |
+| `backend/app/api/datasets.py` | **100%** | Dataset listing, class distribution summaries, base64 thumbnail generation |
+| `backend/app/services/dataset_service.py` | **98%** | In-memory dataset caching, TOFU & Fashion-MNIST sample extraction |
+| `backend/app/api/export.py` | **96%** | Complete JSON and multi-column tabular CSV metric export generation |
+| `backend/app/api/experiments.py` | **95%** | Experiment creation, training dispatch, forgetting partitions, checkpoint queries |
+| `backend/app/services/job_service.py` | **92%** | Thread-safe job queueing, state transitions, progress telemetry, cancellation |
+| `backend/app/services/experiment_service.py` | **82%** | Checkpoint verification, exact retraining baseline, unlearning, 3-way evaluation |
+
+### Privacy-Critical Acceptance Guarantees
+The test suite explicitly verifies 8 non-negotiable privacy preservation rules:
+1. **Cross-Experiment Author Isolation**: Unlearning an author in Experiment A strictly confines the forgetting effect to Experiment A; Experiment B remains unaffected.
+2. **Pristine Baseline Initialization**: Every new experiment begins strictly from the unmodified, pristine original dataset baseline (`ACTIVE_KNOWLEDGE`).
+3. **Backend Restart State Persistence**: Experiment-scoped unlearning states survive process restarts and database reconnections.
+4. **Chat Session Boundary Integrity**: Deleting a chat conversation never mutates or drops underlying dataset records or forgetting audit logs.
+5. **Truthful Cancellation**: Cancelling an unlearning job leaves its state as `CANCELLED`, never falsely reporting completion.
+6. **Truthful Failure Handling**: Execution errors (e.g. memory exhaustion) accurately transition the job to `FAILED` with diagnostic logs.
+7. **Model Checkpoint Immutability**: Original model checkpoints cannot be overwritten or masqueraded by unlearned checkpoints.
+8. **Parametric vs. Retrieval Differentiation**: Distinguishes tabular/retrieval store deletion (`RETRIEVAL_UPDATED`, `DATA_DELETED`) from neural parameter weight modification (`UNLEARNING_COMPLETED`).
 
 ---
 
